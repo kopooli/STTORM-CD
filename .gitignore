@@ -1,0 +1,10 @@
+data/ravaen/*
+data/tiled/*
+data/dataset/*
+wandb/
+__pycache__/
+.DS_Store
+logs/
+lightning_logs/
+!data/tiled/.gitkeep
+!data/ravaen/.gitkeep
