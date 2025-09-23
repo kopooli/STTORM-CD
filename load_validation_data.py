@@ -7,21 +7,38 @@ from tqdm import tqdm
 
 
 def get_validation_data(ravaen, disaster_type):
-    # loads ravaen test dataset (valid)
+    """
+    Loads validation data, handling both RaVAEn's TIFF files and a custom dataset's NumPy files.
+
+    Args:
+        ravaen (bool): True if loading the RaVAEn dataset, False for the custom dataset.
+        disaster_type (str): The specific disaster event to load from the RaVAEn dataset.
+
+    Returns:
+        tuple: A tuple containing three lists: before_images, after_images, and change_masks.
+    """
+    # Determine the root folder based on the dataset type
     if ravaen:
         root_folder = f"./data/ravaen/{disaster_type}"
-    # loads my test dataset (test)
     else:
         root_folder = "data/dataset/test"
+
     before_images = []
     after_images = []
     change_masks = []
+
+    # Iterate through each event directory in the root folder
     for event in os.listdir(root_folder):
-        if not os.path.isdir(os.path.join(root_folder, event)):
-            continue
         event_path = os.path.join(root_folder, event)
+
+        # Skip non-directory files
+        if not os.path.isdir(event_path):
+            continue
+
+        images_folder = os.path.join(event_path, "S2" if ravaen else "all_bands")
+
+        # Load change mask and determine file suffix
         if ravaen:
-            images_folder = os.path.join(event_path, "S2")
             change_mask_name = [
                 f
                 for f in os.listdir(os.path.join(event_path, "changes"))
@@ -30,87 +47,71 @@ def get_validation_data(ravaen, disaster_type):
             change_mask_path = os.path.join(event_path, "changes", change_mask_name)
             change_mask = tiff.imread(change_mask_path)
             ravaen_cloud_mask = (change_mask == 2).astype(int)
-            change_mask[(change_mask == 2)] = 0
+            change_mask[(change_mask == 2)] = 0  # Ignore RaVAEn cloud mask
             suffix = ".tif"
         else:
-            images_folder = os.path.join(event_path, "all_bands")
-            change_mask_name = "mask.npy"
-            change_mask_path = os.path.join(event_path, change_mask_name)
+            change_mask_path = os.path.join(event_path, "mask.npy")
             change_mask = np.load(change_mask_path)
             suffix = ".npy"
+
         change_masks.append(change_mask)
+
+        # Get and sort image files by date
         images = os.listdir(images_folder)
-        images = [(image_name.split("-"), image_name) for image_name in images]
-        images = [
-            (
-                [
-                    int(splitted[0]),
-                    int(splitted[1]),
-                    int(splitted[2].replace(suffix, "")),
-                ],
-                image_name,
+        images = [f for f in images if f.endswith(suffix)]  # Filter for correct file type
+        images_with_dates = []
+        for image_name in images:
+            # Assumes file names are in YYYY-MM-DD format
+            date_str = image_name.split("-")
+            date_obj = datetime.date(
+                year=int(date_str[0]),
+                month=int(date_str[1]),
+                day=int(date_str[2].replace(suffix, "")),
             )
-            for splitted, image_name in images
-        ]
-        images = [
-            (
-                datetime.date(year=splitted[0], month=splitted[1], day=splitted[2]),
-                image_name,
-            )
-            for splitted, image_name in images
-        ]
-        images.sort(key=lambda x: x[0])
-        temp_after_image = images.pop(-1)
+            images_with_dates.append((date_obj, image_name))
+        
+        images_with_dates.sort(key=lambda x: x[0])
+
+        # Separate the "after" image (last one) from the "before" images
+        temp_after_image_name = images_with_dates.pop(-1)[1]
+
+        # Load and preprocess the "after" image
         if ravaen:
-            temp_after_image = tiff.imread(
-                os.path.join(images_folder, temp_after_image[1])
-            )[:, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 14]].astype("float32")
-            temp_after_image[:, :, -1] = ravaen_cloud_mask
+            temp_after_image = tiff.imread(os.path.join(images_folder, temp_after_image_name))
+            temp_after_image = temp_after_image[:, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 14]].astype("float32")
+            temp_after_image[:, :, -1] = ravaen_cloud_mask  # Add cloud mask
         else:
-            temp_after_image = np.load(
-                os.path.join(images_folder, temp_after_image[1])
-            )[:, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13]].astype("float32")
+            temp_after_image = np.load(os.path.join(images_folder, temp_after_image_name))
+            temp_after_image = temp_after_image[:, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13]].astype("float32")
+
         temp_after_image[:, :, :10] = np.clip(
             temp_after_image[:, :, :10], 1, 100000, dtype="float32"
         )
-        temp_before_images = images
-        if ravaen:
-            temp_before_images = [
-                tiff.imread(os.path.join(images_folder, image_name))[
-                    :, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 14]
-                ].astype("float32")
-                for splitted, image_name in temp_before_images
-            ]
-        else:
-            temp_before_images = [
-                np.load(os.path.join(images_folder, image_name))[
-                    :, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13]
-                ].astype("float32")
-                for splitted, image_name in temp_before_images
-            ]
-        temp_before_images = [
-            np.concatenate(
-                (
-                    np.clip(bfr_img[:, :, :10], 1, 100000, dtype="float32"),
-                    bfr_img[:, :, 10][:, :, np.newaxis],
-                ),
-                axis=-1,
-            )
-            for bfr_img in temp_before_images
-        ]
+        
+        # Load and preprocess all "before" images
+        temp_before_images = []
+        for _, image_name in images_with_dates:
+            if ravaen:
+                bfr_img = tiff.imread(os.path.join(images_folder, image_name))
+                bfr_img = bfr_img[:, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 14]].astype("float32")
+                # Handle RaVAEn cloud mask
+                bfr_img[:, :, -1] = (bfr_img[:, :, -1] > 40).astype(int)
+            else:
+                bfr_img = np.load(os.path.join(images_folder, image_name))
+                bfr_img = bfr_img[:, :, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13]].astype("float32")
+
+            # Clip and add to the list
+            bfr_img[:, :, :10] = np.clip(bfr_img[:, :, :10], 1, 100000, dtype="float32")
+            temp_before_images.append(bfr_img)
+        
+        # Normalize bands for both before and after images
         for channel in tqdm(range(11)):
-            if channel != 10:
+            if channel != 10:  # Skip the cloud mask channel (channel 10)
                 temp_after_image = normalize_band(temp_after_image, channel)
-            for i in range(len(temp_before_images)):
-                if channel == 10:
-                    if ravaen:
-                        temp_before_images[i][:, :, channel] = (
-                            temp_before_images[i][:, :, channel] > 40
-                        ).astype(int)
-                else:
-                    temp_before_images[i] = normalize_band(
-                        temp_before_images[i], channel
-                    )
+                for i in range(len(temp_before_images)):
+                    temp_before_images[i] = normalize_band(temp_before_images[i], channel)
+
         before_images.append(temp_before_images)
         after_images.append(temp_after_image)
+
     return before_images, after_images, change_masks
