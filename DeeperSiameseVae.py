@@ -922,7 +922,7 @@ class DeeperVAE(pl.LightningModule):
         optimal_thresh_one = find_optimal_threshold(y_true_one, y_scores_one)
         optimal_thresh_avg = find_optimal_threshold(y_true_avg, y_scores_avg)
         optimal_thresh_min = find_optimal_threshold(y_true_min, y_scores_min)
-    
+        print("OPTIMAL THREHSOLD:", optimal_thresh_one, optimal_thresh_min, optimal_thresh_avg)
         # Binarize predictions using optimal threshold
         y_pred_one = [1 if score >= optimal_thresh_one else 0 for score in y_scores_one]
         y_pred_avg = [1 if score >= optimal_thresh_avg else 0 for score in y_scores_avg]
@@ -968,23 +968,28 @@ class DeeperVAE(pl.LightningModule):
             top_k_true = np.array(y_true)[sorted_indices[:k]]
             return np.mean(top_k_true) if k > 0 else 0
     
-        def average_precision(y_true, y_scores):
-            y_true_sorted = [y for _, y in sorted(zip(y_scores, y_true), reverse=True)]
-            changed_indices = [i for i, label in enumerate(y_true_sorted) if label == 1]
-            if not changed_indices:
-                return 0
-            
-            ap_sum = 0
-            for k in range(1, len(y_true_sorted) + 1):
-                if y_true_sorted[k-1] == 1:
-                    ap_sum += precision_at_k(y_true_sorted, y_true_sorted, k)
-            
-            return ap_sum / len(changed_indices)
+        def mean_average_precision(y_true, y_scores):
+            """
+            Computes MAP (Mean Average Precision) for a single list of binary labels and scores.
+            """
+            # Sort by predicted scores descending
+            sorted_indices = np.argsort(y_scores)[::-1]
+            y_true_sorted = np.array(y_true)[sorted_indices]
+
+            # Find positions of positives
+            positive_indices = np.where(y_true_sorted == 1)[0]
+            if len(positive_indices) == 0:
+                return 0.0
+
+            # Compute precision at each positive
+            precisions = [(i + 1) / (idx + 1) for i, idx in enumerate(positive_indices)]
+            return np.mean(precisions)
+
     
         # Since we have a single set of scores, MAP is equivalent to Average Precision
-        map_one = average_precision(y_true_one, y_scores_one)
-        map_avg = average_precision(y_true_avg, y_scores_avg)
-        map_min = average_precision(y_true_min, y_scores_min)
+        map_one = mean_average_precision(y_true_one, y_scores_one)
+        map_avg = mean_average_precision(y_true_avg, y_scores_avg)
+        map_min = mean_average_precision(y_true_min, y_scores_min)
     
         self.print_and_log_info("Tile-level MAP (one memory)", map_one, avg=False)
         self.print_and_log_info("Tile-level MAP (avg memory)", map_avg, avg=False)

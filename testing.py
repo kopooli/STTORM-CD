@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     test_dataset = datas.ValidTestDataset(before_images, after_images, change_masks)
     initialized_metrics = test_dataset.get_initialized_metrics()
-    my_small_model = load_model(
+    """my_small_model = load_model(
         os.path.join(my_checkpoint_path, "small.ckpt"),
         "small",
         initialized_metrics,
@@ -65,14 +65,14 @@ if __name__ == "__main__":
         "medium",
         initialized_metrics,
         test_dataset,
-    )
+    )"""
     my_large_model = load_model(
         os.path.join(my_checkpoint_path, "large.ckpt"),
         "large",
         initialized_metrics,
         test_dataset,
     )
-    original_small_model = load_model(
+    """    original_small_model = load_model(
         os.path.join(original_path, "small_modified_checkpoint.ckpt"),
         "small",
         initialized_metrics,
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         "large",
         initialized_metrics,
         test_dataset,
-    )
+    )"""
     """input_data = torch.zeros((16,10,32,32))
     summary(original_small_model, input_data)
     summary(original_medium_model, input_data)
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         accelerator=DEVICE,
         max_epochs=1,
     )
-    print("original_small")
+    """print("original_small")
     trainer.test(model=original_small_model, dataloaders=test_dataloader)
     print("original_medium")
     trainer.test(model=original_medium_model, dataloaders=test_dataloader)
@@ -117,6 +117,6 @@ if __name__ == "__main__":
     print("my_small")
     trainer.test(model=my_small_model, dataloaders=test_dataloader)
     print("my_medium")
-    trainer.test(model=my_medium_model, dataloaders=test_dataloader)
+    trainer.test(model=my_medium_model, dataloaders=test_dataloader)"""
     print("my_large")
     trainer.test(model=my_large_model, dataloaders=test_dataloader)
