@@ -11,7 +11,7 @@ BASE_LOG_DIR = "test_metrics_logs"
 os.makedirs(BASE_LOG_DIR, exist_ok=True)
 
 
-def load_model(checkpoint_path, size, initialized_metrics, dataset):
+def load_model(checkpoint_path, size, initialized_metrics, dataset, index=None, cos_baseline=False):
     latent_dim = 128
     input_shape = (10, 32, 32)
     if size == "large":
@@ -40,6 +40,8 @@ def load_model(checkpoint_path, size, initialized_metrics, dataset):
         variable_margin=True,
         log_all_metrics=False,
         dataset_valid=dataset,
+        index=index,
+        cos_baseline=cos_baseline,
     )
     model.to(DEVICE)
     return model
@@ -65,14 +67,15 @@ if __name__ == "__main__":
     original_path = "models/ravaen_modified_ckpt/"
 
     disasters = [
-        ("landslides", True, "landslides"),
-        ("hurricanes", True, "hurricanes"),
-        ("floods_ravaen", True, "floods"),
-        ("floods_sttorm", False, "floods"),
-        ("fires", True, "fires"),
+        # folder_name, ravaen_flag, disaster_type, baseline_index
+        ("landslides", True, "landslides", "ndvi"),
+        ("hurricanes", True, "hurricanes", "ndvi"),
+        ("floods_ravaen", True, "floods", "ndwi"),
+        ("floods_sttorm", False, "floods", "ndwi"),
+        ("fires", True, "fires", "NBR"),
     ]
 
-    for folder_name, ravaen_flag, disaster_type in disasters:
+    for folder_name, ravaen_flag, disaster_type, index in disasters:
         print(f"\n=== Running tests for {folder_name} (ravaen={ravaen_flag}) ===")
 
         # Prepare dataset
@@ -94,6 +97,7 @@ if __name__ == "__main__":
 
         # Load models
         models = {
+            # Main models (all with index=None, cos_baseline=False)
             "original_small": load_model(os.path.join(original_path, "small_modified_checkpoint.ckpt"), "small", initialized_metrics, test_dataset),
             "original_medium": load_model(os.path.join(original_path, "medium_modified_checkpoint.ckpt"), "medium", initialized_metrics, test_dataset),
             "original_large": load_model(os.path.join(original_path, "large_modified_checkpoint.ckpt"), "large", initialized_metrics, test_dataset),
@@ -103,6 +107,10 @@ if __name__ == "__main__":
             "my_small_fixed": load_model(os.path.join(my_checkpoint_path, "small_fixed.ckpt"), "small", initialized_metrics, test_dataset),
             "my_medium_fixed": load_model(os.path.join(my_checkpoint_path, "medium_fixed.ckpt"), "medium", initialized_metrics, test_dataset),
             "my_large_fixed": load_model(os.path.join(my_checkpoint_path, "large_fixed.ckpt"), "large", initialized_metrics, test_dataset),
+            
+            # Baseline models (only small, with index=baseline_index and cos_baseline=True)
+            "Index": load_model(os.path.join(my_checkpoint_path, "small_fixed.ckpt"), "small", initialized_metrics, test_dataset, index=index, cos_baseline=False),
+            "Cos baseline": load_model(os.path.join(my_checkpoint_path, "small_fixed.ckpt"), "small", initialized_metrics, test_dataset, index=None, cos_baseline=True),
         }
 
         # Run tests
