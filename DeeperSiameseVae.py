@@ -17,13 +17,8 @@ from typing import List, Any, Dict, Tuple
 # To create heatmaps, do it for each method and dataset individually and adjust the heatmap limits on line 763 , using the provided method- and dataset-specific min and max predicted values.
 CREATE_HEATMAPS = False
 DO_TILE_AURC = True
-USE_NDWI_INDEX = False
-USE_BURNT_INDEX = False
-USE_NDVI_INDEX = False
-USE_BASELINE = False
-
-assert sum([USE_NDWI_INDEX, USE_BURNT_INDEX, USE_NDVI_INDEX, USE_BASELINE]) in [0, 1]
 assert sum([CREATE_HEATMAPS, DO_TILE_AURC]) == 1
+
 
 
 class DeeperVAE(pl.LightningModule):
@@ -40,6 +35,8 @@ class DeeperVAE(pl.LightningModule):
         variable_margin: bool,
         log_all_metrics: bool,
         dataset_valid,
+        index=None,
+        cos_baseline=False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -84,6 +81,17 @@ class DeeperVAE(pl.LightningModule):
         self.log_all_metrics = log_all_metrics
         self.dataset = dataset_valid
         # self.save_hyperparameters("hidden_channels", "extra_depth_on_scale", "learning_rate", "weight_decay", "margin_size", "variable_margin")
+        self.USE_NDWI_INDEX, self.USE_BURNT_INDEX, self.USE_NDVI_INDEX, self.USE_BASELINE = False,False,False,False
+        if index:
+            if index == "ndwi":
+                self.USE_NDWI_INDEX = True
+            elif index == "ndvi":
+                self.USE_NDVI_INDEX = True
+            elif index == "NBR":
+                self.USE_BURNT_INDEX = True
+        if cos_baseline:
+            self.USE_BASELINE = True
+        assert sum([self.USE_NDWI_INDEX, self.USE_BURNT_INDEX, self.USE_NDVI_INDEX, self.USE_BASELINE]) in [0, 1]
 
     def configure_optimizers(self):
         return optim.Adam(
@@ -241,10 +249,10 @@ class DeeperVAE(pl.LightningModule):
         distances = 1 - F.cosine_similarity(before_mu, after_mu, dim=-1)
         distance = float(distances.squeeze(0))
 
-        if USE_NDWI_INDEX or USE_BURNT_INDEX or USE_NDVI_INDEX:
+        if self.USE_NDWI_INDEX or self.USE_BURNT_INDEX or self.USE_NDVI_INDEX:
             before_image = unnormalize_tile(before_image.cpu())
             after_image = unnormalize_tile(after_image.cpu())
-            if USE_NDWI_INDEX:
+            if self.USE_NDWI_INDEX:
                 b3_before = before_image[:, 1, :, :]
                 b8_before = before_image[:, 6, :, :]
                 ndwi_before = ((b3_before - b8_before) / (b3_before + b8_before)) + 1
@@ -252,7 +260,7 @@ class DeeperVAE(pl.LightningModule):
                 b8_after = after_image[:, 6, :, :]
                 ndwi_after = ((b3_after - b8_after) / (b3_after + b8_after)) + 1
                 distance = float(ndwi_after.mean() - ndwi_before.mean())
-            elif USE_BURNT_INDEX:
+            elif self.USE_BURNT_INDEX:
                 b8_before = before_image[:, 6, :, :]
                 b12_before = before_image[:, 9, :, :]
                 # burnt index is reverse, low value means burnt area
@@ -275,7 +283,7 @@ class DeeperVAE(pl.LightningModule):
                 # NDVI index measure vegation, in case of disaster there is less vegetation after
                 distance = float(ndvi_before.mean() - ndvi_after.mean())
 
-        if USE_BASELINE:
+        if self.USE_BASELINE:
             distances = 1 - F.cosine_similarity(
                 before_image.flatten(), after_image.flatten(), dim=0
             )
@@ -922,11 +930,47 @@ class DeeperVAE(pl.LightningModule):
         optimal_thresh_one = find_optimal_threshold(y_true_one, y_scores_one)
         optimal_thresh_avg = find_optimal_threshold(y_true_avg, y_scores_avg)
         optimal_thresh_min = find_optimal_threshold(y_true_min, y_scores_min)
-        print("OPTIMAL THREHSOLD:", optimal_thresh_one, optimal_thresh_min, optimal_thresh_avg)
+
+        self.print_and_log_info("Optimal threshold (one memory)", optimal_thresh_one, avg=False)
+        self.print_and_log_info("Optimal threshold (avg memory)", optimal_thresh_avg, avg=False)
+        self.print_and_log_info("Optimal threshold (min memory)", optimal_thresh_min, avg=False)
+
+        self.print_and_log_info("Min prediction (one memory)", min(y_scores_one), avg=False)
+        self.print_and_log_info("Max prediction (one memory)", max(y_scores_one), avg=False)
+
+        self.print_and_log_info("Min prediction (avg memory)", min(y_scores_avg), avg=False)
+        self.print_and_log_info("Max prediction (avg memory)", max(y_scores_avg), avg=False)
+
+        self.print_and_log_info("Min prediction (min memory)", min(y_scores_min), avg=False)
+        self.print_and_log_info("Max prediction (min memory)", max(y_scores_min), avg=False)
+
         # Binarize predictions using optimal threshold
         y_pred_one = [1 if score >= optimal_thresh_one else 0 for score in y_scores_one]
         y_pred_avg = [1 if score >= optimal_thresh_avg else 0 for score in y_scores_avg]
         y_pred_min = [1 if score >= optimal_thresh_min else 0 for score in y_scores_min]
+
+        from sklearn.metrics import confusion_matrix, cohen_kappa_score
+
+        def print_confusion(y_true, y_pred, label):
+            tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+            self.print_and_log_info(f"{label} - True Positives", tp, avg=False)
+            self.print_and_log_info(f"{label} - True Negatives", tn, avg=False)
+            self.print_and_log_info(f"{label} - False Positives", fp, avg=False)
+            self.print_and_log_info(f"{label} - False Negatives", fn, avg=False)
+
+        # After computing y_pred_one, y_pred_avg, y_pred_min
+        print_confusion(y_true_one, y_pred_one, "One memory")
+        print_confusion(y_true_avg, y_pred_avg, "Avg memory")
+        print_confusion(y_true_min, y_pred_min, "Min memory")
+
+        # Compute Cohen's Kappa
+        kappa_one = cohen_kappa_score(y_true_one, y_pred_one)
+        kappa_avg = cohen_kappa_score(y_true_avg, y_pred_avg)
+        kappa_min = cohen_kappa_score(y_true_min, y_pred_min)
+
+        self.print_and_log_info("Tile-level Cohen Kappa (one memory)", kappa_one, avg=False)
+        self.print_and_log_info("Tile-level Cohen Kappa (avg memory)", kappa_avg, avg=False)
+        self.print_and_log_info("Tile-level Cohen Kappa (min memory)", kappa_min, avg=False)
     
         # F1-Score, Precision, and Recall
         f1_one = f1_score(y_true_one, y_pred_one)
@@ -952,11 +996,15 @@ class DeeperVAE(pl.LightningModule):
         self.print_and_log_info("Tile-level F1-Score (min memory)", f1_min, avg=False)
         self.print_and_log_info("Tile-level Precision (min memory)", precision_min, avg=False)
         self.print_and_log_info("Tile-level Recall (min memory)", recall_min, avg=False)
+
+        def compute_auprc(y_true, y_scores):
+            precision, recall, _ = precision_recall_curve(y_true, y_scores)
+            return auc(recall, precision)  # Note: x=recall, y=precision
     
         # AUPRC (Area Under the Precision-Recall Curve)
-        auprc_one = average_precision_score(y_true_one, y_scores_one)
-        auprc_avg = average_precision_score(y_true_avg, y_scores_avg)
-        auprc_min = average_precision_score(y_true_min, y_scores_min)
+        auprc_one = compute_auprc(y_true_one, y_scores_one)
+        auprc_avg = compute_auprc(y_true_avg, y_scores_avg)
+        auprc_min = compute_auprc(y_true_min, y_scores_min)
     
         self.print_and_log_info("Tile-level AUPRC (one memory)", auprc_one, avg=False)
         self.print_and_log_info("Tile-level AUPRC (avg memory)", auprc_avg, avg=False)
@@ -967,7 +1015,7 @@ class DeeperVAE(pl.LightningModule):
             sorted_indices = np.argsort(y_scores)[::-1]
             top_k_true = np.array(y_true)[sorted_indices[:k]]
             return np.mean(top_k_true) if k > 0 else 0
-    
+        
         def mean_average_precision(y_true, y_scores):
             """
             Computes MAP (Mean Average Precision) for a single list of binary labels and scores.
@@ -984,19 +1032,26 @@ class DeeperVAE(pl.LightningModule):
             # Compute precision at each positive
             precisions = [(i + 1) / (idx + 1) for i, idx in enumerate(positive_indices)]
             return np.mean(precisions)
+    
+        # Sklearn Average Precision (official AP)
+        map_sklearn_one = average_precision_score(y_true_one, y_scores_one)
+        map_sklearn_avg = average_precision_score(y_true_avg, y_scores_avg)
+        map_sklearn_min = average_precision_score(y_true_min, y_scores_min)
 
-    
-        # Since we have a single set of scores, MAP is equivalent to Average Precision
-        map_one = mean_average_precision(y_true_one, y_scores_one)
-        map_avg = mean_average_precision(y_true_avg, y_scores_avg)
-        map_min = mean_average_precision(y_true_min, y_scores_min)
-    
-        self.print_and_log_info("Tile-level MAP (one memory)", map_one, avg=False)
-        self.print_and_log_info("Tile-level MAP (avg memory)", map_avg, avg=False)
-        self.print_and_log_info("Tile-level MAP (min memory)", map_min, avg=False)
+        self.print_and_log_info("Sklearn AP (one memory)", map_sklearn_one, avg=False)
+        self.print_and_log_info("Sklearn AP (avg memory)", map_sklearn_avg, avg=False)
+        self.print_and_log_info("Sklearn AP (min memory)", map_sklearn_min, avg=False)
+
+        map_custom_one = mean_average_precision(y_true_one, y_scores_one)
+        map_custom_avg = mean_average_precision(y_true_avg, y_scores_avg)
+        map_custom_min = mean_average_precision(y_true_min, y_scores_min)
+
+        self.print_and_log_info("Custom MAP (one memory)", map_custom_one, avg=False)
+        self.print_and_log_info("Custom MAP (avg memory)", map_custom_avg, avg=False)
+        self.print_and_log_info("Custom MAP (min memory)", map_custom_min, avg=False)
     
         # Precision@K for a few K values
-        k_values = [10, 50, 100]
+        k_values = [10, 50, 100, sum(y_true_avg)]
         for k in k_values:
             p_at_k_one = precision_at_k(y_true_one, y_scores_one, k)
             p_at_k_avg = precision_at_k(y_true_avg, y_scores_avg, k)
