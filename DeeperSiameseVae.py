@@ -16,9 +16,9 @@ from sklearn.metrics import precision_score, recall_score, f1_score, average_pre
 from typing import List, Any, Dict, Tuple
 import os
 # To create heatmaps, do it for each method and dataset individually and adjust the heatmap limits on line 763 , using the provided method- and dataset-specific min and max predicted values.
-CREATE_HEATMAPS = False
-DO_TILE_AURC = True
-assert sum([CREATE_HEATMAPS, DO_TILE_AURC]) == 1
+CREATE_HEATMAPS = True
+DO_TILE_AURC = False
+#assert sum([CREATE_HEATMAPS, DO_TILE_AURC]) == 1
 
 
 
@@ -39,6 +39,9 @@ class DeeperVAE(pl.LightningModule):
         index=None,
         cos_baseline=False,
         export=False,
+        log_extra=False,
+        dataset_name=None,
+        method=None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -95,6 +98,9 @@ class DeeperVAE(pl.LightningModule):
             self.USE_BASELINE = True
         assert sum([self.USE_NDWI_INDEX, self.USE_BURNT_INDEX, self.USE_NDVI_INDEX, self.USE_BASELINE]) in [0, 1]
         self.export = export
+        self.log_extra = log_extra
+        self.dataset_name=dataset_name
+        self.method=method
 
     def configure_optimizers(self):
         return optim.Adam(
@@ -381,10 +387,33 @@ class DeeperVAE(pl.LightningModule):
                     pixel_num,
                     only_auc=True,
                 )
-            print("PORTIONS")
-            print(recalled_portions)
-            print("AVG_list")
-            print(self.avg_list)
+            # Log all elements of avg_list
+            if self.log_extra:
+                for idx, val in enumerate(self.avg_list):
+                    self.print_and_log_info(
+                        f"recalls_avg_{idx}",
+                        torch.tensor([val]),
+                        avg=False,
+                        is_list=False
+                    )
+
+                # Log all elements of min_list
+                for idx, val in enumerate(self.min_list):
+                    self.print_and_log_info(
+                        f"recalls_min_{idx}",
+                        torch.tensor([val]),
+                        avg=False,
+                        is_list=False
+                    )
+
+                # Log all elements of one_list
+                for idx, val in enumerate(self.one_list):
+                    self.print_and_log_info(
+                        f"recalls_one_{idx}",
+                        torch.tensor([val]),
+                        avg=False,
+                        is_list=False
+                    )
             self.print_and_log_info(
                 "area_under_the_curve_avg",
                 auc(recalled_portions, self.avg_list),
@@ -453,10 +482,12 @@ class DeeperVAE(pl.LightningModule):
         eps = torch.randn_like(std)
         return eps * std + mu
 
-    def print_and_log_info(self, name_string, statistic, avg=True):
+    def print_and_log_info(self, name_string, statistic, avg=True, is_list=False):
         if avg:
             statistic = mean(statistic)
             name_string = f"{name_string}_avg"
+        elif is_list:
+            statistic = statistic
         else:
             statistic = float(statistic)
             name_string = f"{name_string}_overall"
@@ -709,7 +740,7 @@ class DeeperVAE(pl.LightningModule):
             min_memory_corr_retrieved_list,
         ]
 
-    def create_heatmaps(self):
+    """    def create_heatmaps(self):
         # [event][tile_id][0][before_picture_id]
         heatmap_metrics = self.initialized_metrics
         for delete_list in self.delete_indexes:
@@ -819,6 +850,106 @@ class DeeperVAE(pl.LightningModule):
                 ax.get_position().height,
             ]
         )
+        plt.colorbar(im, cax=cax)
+        cax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{x:.2f}"))
+        cax.yaxis.set_tick_params(labelsize=18)
+        plt.savefig(filename, bbox_inches="tight")
+        plt.close(fig)"""
+    def create_heatmaps(self, tile_size: int = 32):
+        dataset_name = getattr(self, "dataset_name", "exports")
+        method = getattr(self, "method", "default_method")
+
+        heatmap_metrics = self.initialized_metrics
+
+        # Apply deletions
+        for delete_list in self.delete_indexes:
+            if len(delete_list) == 2:
+                new_list = [np.nan]
+                heatmap_metrics[delete_list[0]][delete_list[1]][0] = new_list
+            else:
+                if len(heatmap_metrics[delete_list[0]][delete_list[1]][delete_list[2]]) > 1:
+                    del heatmap_metrics[delete_list[0]][delete_list[1]][delete_list[2]][delete_list[3]]
+                else:
+                    heatmap_metrics[delete_list[0]][delete_list[1]][delete_list[2]][delete_list[3]] = np.nan
+
+        for event_id, event in enumerate(heatmap_metrics):
+            mask = self.dataset.change_masks[event_id]
+            avg_event_heatmap = np.zeros((mask.shape[0], mask.shape[1]))
+            min_event_heatmap = np.zeros((mask.shape[0], mask.shape[1]))
+            one_event_heatmap = np.zeros((mask.shape[0], mask.shape[1]))
+
+            all_avg, all_min, all_one = [], [], []
+
+            for tile_id, tile in enumerate(event):
+                tile_height_index, tile_width_index = tiling.get_tile_height_and_width_indexes(mask, tile_id, tile_size)
+
+                cos_distances = tile[0]
+
+                avg_val = mean(cos_distances)
+                min_val = min(cos_distances)
+                one_val = cos_distances[-1]
+
+                avg_event_heatmap[
+                    tile_height_index : tile_height_index + tile_size,
+                    tile_width_index : tile_width_index + tile_size,
+                ] = avg_val
+                min_event_heatmap[
+                    tile_height_index : tile_height_index + tile_size,
+                    tile_width_index : tile_width_index + tile_size,
+                ] = min_val
+                one_event_heatmap[
+                    tile_height_index : tile_height_index + tile_size,
+                    tile_width_index : tile_width_index + tile_size,
+                ] = one_val
+
+                all_avg.append(avg_val)
+                all_min.append(min_val)
+                all_one.append(one_val)
+
+            # Compute per-event min/max
+            event_min_max = {
+                "avg_min": np.nanmin(all_avg),
+                "avg_max": np.nanmax(all_avg),
+                "min_min": np.nanmin(all_min),
+                "min_max": np.nanmax(all_min),
+                "one_min": np.nanmin(all_one),
+                "one_max": np.nanmax(all_one),
+            }
+            print(f"Event {event_id} min/max per metric:", event_min_max)
+
+            # Save heatmaps
+            base_path = os.path.join("visualizations", dataset_name, method)
+            os.makedirs(base_path, exist_ok=True)
+
+            self.save_heatmap_with_colorbar(
+                avg_event_heatmap, f"{base_path}/{event_id}_avg.png", event_min_max["avg_min"], event_min_max["avg_max"]
+            )
+            self.save_heatmap_with_colorbar(
+                min_event_heatmap, f"{base_path}/{event_id}_min.png", event_min_max["min_min"], event_min_max["min_max"]
+            )
+            self.save_heatmap_with_colorbar(
+                one_event_heatmap, f"{base_path}/{event_id}_one.png", event_min_max["one_min"], event_min_max["one_max"]
+            )
+
+
+    def save_heatmap_with_colorbar(self, data, filename, vmin=None, vmax=None):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        nan_color = (1, 1, 1)  # RGB for NaN
+        if vmin is None:
+            vmin = np.nanmin(data)
+        if vmax is None:
+            vmax = np.nanmax(data)
+        cmap = plt.cm.get_cmap("viridis").copy()
+        cmap.set_bad(color=nan_color)
+        fig, ax = plt.subplots()
+        im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_axis_off()
+        cax = fig.add_axes([
+            ax.get_position().x1 + 0.01,
+            ax.get_position().y0,
+            0.02,
+            ax.get_position().height,
+        ])
         plt.colorbar(im, cax=cax)
         cax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{x:.2f}"))
         cax.yaxis.set_tick_params(labelsize=18)
