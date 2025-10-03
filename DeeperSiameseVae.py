@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 from typing import List, Any, Dict, Tuple
+import os
 # To create heatmaps, do it for each method and dataset individually and adjust the heatmap limits on line 763 , using the provided method- and dataset-specific min and max predicted values.
 CREATE_HEATMAPS = False
 DO_TILE_AURC = True
@@ -37,6 +38,7 @@ class DeeperVAE(pl.LightningModule):
         dataset_valid,
         index=None,
         cos_baseline=False,
+        export=False,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -92,6 +94,7 @@ class DeeperVAE(pl.LightningModule):
         if cos_baseline:
             self.USE_BASELINE = True
         assert sum([self.USE_NDWI_INDEX, self.USE_BURNT_INDEX, self.USE_NDVI_INDEX, self.USE_BASELINE]) in [0, 1]
+        self.export = export
 
     def configure_optimizers(self):
         return optim.Adam(
@@ -110,7 +113,8 @@ class DeeperVAE(pl.LightningModule):
         # of the latent Gaussian distribution
         mu = self.fc_mu(result)
         # for generating the model summary uncomment this
-        # return mu
+        if self.export:
+            return mu
         log_var = self.fc_var(result)
 
         return [mu, log_var]
@@ -127,6 +131,9 @@ class DeeperVAE(pl.LightningModule):
         return result
 
     def forward(self, input, **kwargs) -> List[Tensor]:
+        if self.export:
+            input_mu = self.encode(input)
+            return input_mu
         # forward used for training
         anchor, positive, negative = input
         anchor_mu, anchor_logvar = self.encode(anchor)
@@ -142,12 +149,6 @@ class DeeperVAE(pl.LightningModule):
             [self.decode(positive_z), positive_mu, positive_logvar],
             [self.decode(negative_z), negative_mu, negative_logvar],
         ]
-
-    """def forward(self, input):
-        #this forward was used for generating the architecture and models the production use
-        anchor = input
-        anchor_mu = self.encode(anchor)
-        return anchor_mu"""
 
     def _tripletLoss(
         self,
@@ -380,6 +381,10 @@ class DeeperVAE(pl.LightningModule):
                     pixel_num,
                     only_auc=True,
                 )
+            print("PORTIONS")
+            print(recalled_portions)
+            print("AVG_list")
+            print(self.avg_list)
             self.print_and_log_info(
                 "area_under_the_curve_avg",
                 auc(recalled_portions, self.avg_list),
@@ -790,6 +795,7 @@ class DeeperVAE(pl.LightningModule):
             )
 
     def save_heatmap_with_colorbar(self, data, filename):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         nan_color = (1, 1, 1)  # RGB value for white
         # Create a copy of the 'viridis' colormap and set nan values to white
         # limits are rounded on 2 decimals
@@ -798,7 +804,7 @@ class DeeperVAE(pl.LightningModule):
         # limits for ravaen floods, min, baseline - (0,1.87), ndwi - (-0.74,0.79), ravaen_small - (0,1.29), my_small - (0,1.56)
         # limits for ravaen hurricanes, min, baseline - (0,1.69), ndvi - (-0.33,0.95), ravaen_small - (0,1.17), my_big - (0,1.51)
         # limits for ravaen fires, min NBR - (-0.73, 1.07), baseline - (0, 1.56), ravaen_medium - (0,1.31), my_big (0,0.94)
-        limits = (-0.87, 0.6)
+        limits = (0, 1.62)
         cmap = plt.cm.get_cmap("viridis").copy()
         cmap.set_bad(color=nan_color)
         fig, ax = plt.subplots()

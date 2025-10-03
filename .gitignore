@@ -12,3 +12,5 @@ test_metrics_logs/
 wandb_export/
 comparison.pdf
 comparison.png
+latex_tables/
+exports/

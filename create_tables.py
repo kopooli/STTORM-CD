@@ -12,7 +12,7 @@ disasters_sttorm = ["floods"]
 
 dataset_display_names = {
     "landslides": "RaVAEn-Landslides",
-    "fires": "RaVAEn-Fires",
+    "fires": "RaVAEn-Wildfires",
     "hurricanes": "RaVAEn-Hurricanes",
     "floods_ravaen": "RaVAEn-Floods",
     "floods": "STTORM-Floods"
@@ -38,7 +38,7 @@ metrics_config = {
     "AURC": ["area_under_the_curve_one_overall", "area_under_the_curve_min_overall", "area_under_the_curve_avg_overall"],
     "RDP": ["downlink_amount_one_overall", "downlink_amount_min_overall", "downlink_amount_avg_overall"],
     "AUPRC": ["Tile-level AUPRC (one memory)_overall", "Tile-level AUPRC (min memory)_overall", "Tile-level AUPRC (avg memory)_overall"],
-    "AP": ["Custom MAP (one memory)_overall", "Custom MAP (min memory)_overall", "Custom MAP (avg memory)_overall"],
+    #"AP": ["Custom MAP (one memory)_overall", "Custom MAP (min memory)_overall", "Custom MAP (avg memory)_overall"],
     "F1": ["Tile-level F1-Score (one memory)_overall", "Tile-level F1-Score (min memory)_overall", "Tile-level F1-Score (avg memory)_overall"],
     "Precision": ["Tile-level Precision (one memory)_overall", "Tile-level Precision (min memory)_overall", "Tile-level Precision (avg memory)_overall"],
     "Recall": ["Tile-level Recall (one memory)_overall", "Tile-level Recall (min memory)_overall", "Tile-level Recall (avg memory)_overall"]
@@ -68,46 +68,175 @@ def extract_metrics(metrics, metric_name):
     return [metrics.get(k, 0) for k in keys]
 
 # ---------------- TABLE GENERATORS ----------------
-def make_ravaen_table(all_metrics_per_dataset):
+def make_ravaen_table(all_metrics_per_dataset, memory_strategy=MEMORY_STRATEGY):
+    """
+    Creates a LaTeX table comparing Geo-index, baselines, RaVAEn variable models, 
+    and STTORM-CD variable models across multiple datasets.
+    Numbers are displayed as percentages with two decimals.
+    """
     datasets = list(all_metrics_per_dataset.keys())
-    header = "\\begin{table}\n  \\centering\n  \\begin{tabular}{|l|" + "ll|" * len(datasets) + "}\n"
-    header += "    \\toprule\n"
-    header += "    \\multicolumn{1}{|r|}{Dataset} " + \
-          "".join([f"& \\multicolumn{{2}}{{|r|}}{{{latex_escape(dataset_display_names[d])}}}" for d in datasets]) + " \\\\\n"
-    header += "    \\multicolumn{1}{|r|}{Tiles count} " + "".join([f"& \\multicolumn{{2}}{{|r|}}{{{all_metrics_per_dataset[d].get('total_tiles',0)}}}" for d in datasets]) + " \\\\\n"
-    header += "    \\multicolumn{1}{|r|}{Changed tiles [\\%]} " + "".join([f"& \\multicolumn{{2}}{{|r|}}{{{all_metrics_per_dataset[d].get('changed_percent',0):.2f}}}" for d in datasets]) + " \\\\\n"
-    header += f"    \\multicolumn{{1}}{{|r|}}{{Metric}} " + "".join([f"& {PRIMARY_METRIC} $\\uparrow$ & {SECONDARY_METRIC} $\\downarrow$" for _ in datasets]) + " \\\\\n    \\midrule\n"
+    
+    col_format = "|l|" + "cc|" * len(datasets)
+    header = (
+        "\\begin{table}\n"
+        "  \\centering\n"
+        f"  \\begin{{tabular}}{{{col_format}}}\n"
+        "    \\toprule\n"
+        "    \\multicolumn{1}{|r|}{Dataset} "
+        + "".join([f"& \\multicolumn{{2}}{{|r|}}{{{latex_escape(dataset_display_names[d])}}}" for d in datasets])
+        + " \\\\\n"
+        "    \\multicolumn{1}{|r|}{Tiles count} "
+        + "".join([f"& \\multicolumn{{2}}{{|r|}}{{{int(all_metrics_per_dataset[d].get('total_tiles',0))}}}" for d in datasets])
+        + " \\\\\n"
+        "    \\multicolumn{1}{|r|}{Changed tiles [\\%]} "
+        + "".join([f"& \\multicolumn{{2}}{{|r|}}{{{all_metrics_per_dataset[d].get('changed_percent',0):.2f}}}" for d in datasets])
+        + " \\\\\n"
+        "    \\multicolumn{1}{|r|}{Metric} "
+        + "".join([f"& AURC $\\uparrow$ & RDP $\\downarrow$" for _ in datasets])
+        + " \\\\\n"
+        "    \\midrule\n"
+    )
+
+    # All models including baselines
+    baseline_models = ["Index", "Cos baseline"]
+    ravaen_models = ["original_small", "original_medium", "original_large"]
+    sttorm_models = ["my_small_variable", "my_medium_variable", "my_large_variable"]
+    order = baseline_models + ravaen_models + sttorm_models
+    display_order = ["Geo-index", "Cosine baseline",
+                     "RaVAEn -- small", "RaVAEn -- medium", "RaVAEn -- large",
+                     "STTORM-CD -- small", "STTORM-CD -- medium", "STTORM-CD -- large"]
+
+    # Compute best per group per dataset for bolding
+    mem_idx = {"one": 0, "min": 1, "avg": 2}[memory_strategy]
+    best_primary = {d: {} for d in datasets}
+    best_secondary = {d: {} for d in datasets}
+    for d in datasets:
+        best_primary[d]["ravaen"] = max(all_metrics_per_dataset[d][k].get(PRIMARY_METRIC,[0,0,0])[mem_idx]*100 for k in ravaen_models)
+        best_secondary[d]["ravaen"] = min(all_metrics_per_dataset[d][k].get(SECONDARY_METRIC,[0,0,0])[mem_idx]*100 for k in ravaen_models)
+        best_primary[d]["sttorm"] = max(all_metrics_per_dataset[d][k].get(PRIMARY_METRIC,[0,0,0])[mem_idx]*100 for k in sttorm_models)
+        best_secondary[d]["sttorm"] = min(all_metrics_per_dataset[d][k].get(SECONDARY_METRIC,[0,0,0])[mem_idx]*100 for k in sttorm_models)
 
     rows = ""
-    for i, model in enumerate(models):
-        row = latex_escape(display_names[i])
-        for dataset in datasets:
-            metrics = all_metrics_per_dataset[dataset].get(model, {})
-            mem_idx = {"one": 0, "min": 1, "avg": 2}[MEMORY_STRATEGY]
-            p_vals = metrics.get(PRIMARY_METRIC, [0,0,0])
-            s_vals = metrics.get(SECONDARY_METRIC, [0,0,0])
-            row += f" & {p_vals[mem_idx]:.3f} & {s_vals[mem_idx]:.2f}"
+    for i, model_key in enumerate(order):
+        disp_name = display_order[i]
+        group = None
+        if model_key in ravaen_models:
+            group = "ravaen"
+        elif model_key in sttorm_models:
+            group = "sttorm"
+
+        row = disp_name
+        for d in datasets:
+            metrics = all_metrics_per_dataset[d].get(model_key, {})
+            p_val = metrics.get(PRIMARY_METRIC, [0,0,0])[mem_idx]*100
+            s_val = metrics.get(SECONDARY_METRIC, [0,0,0])[mem_idx]*100
+
+            # Bold best only for RaVAEn and STTORM groups
+            if group == "ravaen":
+                p_str = f"\\textbf{{{p_val:.2f}}}" if p_val == best_primary[d][group] else f"{p_val:.2f}"
+                s_str = f"\\textbf{{{s_val:.2f}}}" if s_val == best_secondary[d][group] else f"{s_val:.2f}"
+            elif group == "sttorm":
+                p_str = f"\\textbf{{{p_val:.2f}}}" if p_val == best_primary[d][group] else f"{p_val:.2f}"
+                s_str = f"\\textbf{{{s_val:.2f}}}" if s_val == best_secondary[d][group] else f"{s_val:.2f}"
+            else:
+                # baselines: no bold
+                p_str = f"{p_val:.2f}"
+                s_str = f"{s_val:.2f}"
+
+            row += f" & {p_str} & {s_str}"
         rows += f"    {row} \\\\\n"
 
-    footer = f"    \\bottomrule\n  \\end{{tabular}}\n  \\caption{{RaVAEn comparison ({MEMORY_STRATEGY} memory) for {latex_escape(PRIMARY_METRIC)} and {latex_escape(SECONDARY_METRIC)}}}\n\\end{{table}}\n"
+        # Midrules after baselines and after RaVAEn
+        if model_key == baseline_models[-1] or model_key == ravaen_models[-1]:
+            rows += "    \\midrule\n"
+
+    footer = (
+        "    \\bottomrule\n"
+        "  \\end{tabular}\n"
+        "  \\caption{Reevaluating RaVAEn. The final change predictions were derived by using $\min()$ on the change predictions from the memory. In RaVAEn-Floods, the geo-index used was NDWI; in RaVAEn-Wildfires, the NBR; and in RaVAEn-Landslides and RaVAEn-Hurricanes, NDVI. Highlighted are the best scores for STTORM-CD and RaVAEn models for each metric. *Used as a validation dataset.}\n"
+        "  \\label{tab:ravaen-revisited-combined}\n"
+        "\\end{table}\n"
+    )
+
     return header + rows + footer
 
 def make_sttorm_table(all_metrics):
     col_format = "|l|ccc|ccc|"
-    header = f"\\begin{{table}}\n  \\begin{{tabular}}{{{col_format}}}\n    \\toprule\n"
-    header += f"    \\multicolumn{{1}}{{|c|}}{{Method}} & \\multicolumn{{3}}{{c|}}{{{PRIMARY_METRIC} $\\uparrow$}} & \\multicolumn{{3}}{{c|}}{{{SECONDARY_METRIC} $\\downarrow$}} \\\\\n"
-    header += "    \\cmidrule(r){2-4} \\cmidrule(l){5-7}\n"
-    header += "    & Most recent & min(memory) & avg(memory) & Most recent & min(memory) & avg(memory) \\\\\n    \\midrule\n"
+    header = (
+        f"\\begin{{table}}\n"
+        f"  \\centering\n"
+        f"  \\begin{{tabular}}{{{col_format}}}\n"
+        f"    \\toprule\n"
+        f"    \\multicolumn{{1}}{{|c|}}{{Method}} & "
+        f"\\multicolumn{{3}}{{c|}}{{{PRIMARY_METRIC} $\\uparrow$}} & "
+        f"\\multicolumn{{3}}{{c|}}{{{SECONDARY_METRIC} $\\downarrow$}} \\\\\n"
+        f"    \\cmidrule(r){{2-4}} \\cmidrule(l){{5-7}}\n"
+        f"    & Most recent & $min$(memory) & $avg$(memory) & Most recent & $min$(memory) & $avg$(memory) \\\\\n"
+        f"    \\midrule\n"
+    )
+
+    order = [
+        ("Index", "Geo-Index"),   
+        ("Cos baseline", "Cosine baseline"),
+        ("original_small", "RaVAEn -- small"),
+        ("original_medium", "RaVAEn -- medium"),
+        ("original_large", "RaVAEn -- large"),
+        ("my_small_variable", "STTORM-CD -- small"),
+        ("my_medium_variable", "STTORM-CD -- medium"),
+        ("my_large_variable", "STTORM-CD -- large"),
+    ]
+
+    # Groups for bolding
+    ravaen_keys = ["original_small", "original_medium", "original_large"]
+    sttorm_keys = ["my_small_variable", "my_medium_variable", "my_large_variable"]
+
+    # Determine best/worst depending on metric direction
+    best_primary_ravaen = [max(all_metrics[k].get(PRIMARY_METRIC, [0,0,0])[i] for k in ravaen_keys) for i in range(3)]
+    best_primary_sttorm = [max(all_metrics[k].get(PRIMARY_METRIC, [0,0,0])[i] for k in sttorm_keys) for i in range(3)]
+    # For SECONDARY_METRIC (down-arrow), lower is better
+    best_secondary_ravaen = [min(all_metrics[k].get(SECONDARY_METRIC, [0,0,0])[i] for k in ravaen_keys) for i in range(3)]
+    best_secondary_sttorm = [min(all_metrics[k].get(SECONDARY_METRIC, [0,0,0])[i] for k in sttorm_keys) for i in range(3)]
 
     rows = ""
-    for i, model in enumerate(models):
-        metrics = all_metrics.get(model, {})
+    for model_key, disp_name in order:
+        metrics = all_metrics.get(model_key, {})
         p_vals = metrics.get(PRIMARY_METRIC, [0,0,0])
         s_vals = metrics.get(SECONDARY_METRIC, [0,0,0])
-        row = f"{latex_escape(display_names[i])} & {p_vals[0]:.3f} & {p_vals[1]:.3f} & {p_vals[2]:.3f} & {s_vals[0]:.2f} & {s_vals[1]:.2f} & {s_vals[2]:.2f}"
+
+        # Bold best scores per group
+        p_bold = [
+            f"\\textbf{{{v*100:.2f}}}" if 
+            (model_key in ravaen_keys and v == best_primary_ravaen[i]) or
+            (model_key in sttorm_keys and v == best_primary_sttorm[i]) else f"{v*100:.2f}" 
+            for i, v in enumerate(p_vals)
+        ]
+        s_bold = [
+            f"\\textbf{{{v*100:.2f}}}" if 
+            (model_key in ravaen_keys and v == best_secondary_ravaen[i]) or
+            (model_key in sttorm_keys and v == best_secondary_sttorm[i]) else f"{v*100:.2f}" 
+            for i, v in enumerate(s_vals)
+        ]
+
+        row = f"{disp_name} & {p_bold[0]} & {p_bold[1]} & {p_bold[2]} & {s_bold[0]} & {s_bold[1]} & {s_bold[2]}"
         rows += f"    {row} \\\\\n"
 
-    footer = f"    \\bottomrule\n  \\end{{tabular}}\n  \\caption{{STTORM-CD Floods dataset metrics: {latex_escape(PRIMARY_METRIC)} and {latex_escape(SECONDARY_METRIC)}}}\n\\end{{table}}\n"
+        # Insert midrules between groups
+        if model_key == "Cos baseline" or model_key == "original_large":
+            rows += "    \\midrule\n"
+
+    footer = (
+        f"    \\bottomrule\n"
+        f"  \\end{{tabular}}\n"
+        f"  \\caption{{Comparison of approaches' performance on the test set from the STTORM-CD-Floods dataset. "
+        f"For RDP interpretation, it is important to mention that the total number of tiles in this dataset is 6,678, "
+        f"and 22.34\\,\\% of them contain the defined change ($>5\\,\\%$ of pixels changed). "
+        f"The ``Most recent'' column represents results from comparing the changed tile with only the most recent non-cloudy tile. "
+        f"In other columns, all non-cloudy tiles from memory were used to derive the final change predictions using the $min()$ or $average()$ function. "
+        f"Highlighted are the best scores for STTORM-CD models and RaVAEn models for easy comparison.}}\n"
+        f"\\label{{tab:my-results-combined}}\n"
+        f"\\end{{table}}\n"
+    )
+
     return header + rows + footer
 
 # ---------------- MAIN ----------------
@@ -172,12 +301,12 @@ def make_combined_table(all_ravaen_metrics, all_sttorm_metrics, metric=PRIMARY_M
         for d in ["landslides", "fires", "hurricanes", "floods_ravaen"]:
             metrics = all_ravaen_metrics.get(d, {}).get(model, {})
             val = metrics.get(metric, [0, 0, 0])[1]  # min memory
-            row += f" & {val:.3f}"
+            row += f" & {val*100:.2f}"
 
         # STTORM-CD Floods → avg memory
         metrics = all_sttorm_metrics.get(model, {})
         val = metrics.get(metric, [0, 0, 0])[2]  # avg memory
-        row += f" & {val:.3f}"
+        row += f" & {val*100:.2f}"
 
         rows += f"    {row} \\\\\n"
 
@@ -263,7 +392,7 @@ def generate_markdown_tables_per_memory():
                 for dataset in disasters_ravaen + disasters_sttorm:
                     metrics = all_metrics.get(dataset, {}).get(model, {})
                     vals = metrics.get(metric, [0, 0, 0]) if metrics else [0,0,0]
-                    row.append(f"{vals[mem_idx]:.3f}")
+                    row.append(f"{vals[mem_idx]*100:.2f}")
                 lines.append("| " + " | ".join(row) + " |")
 
             lines.append("\n")  # space between tables
@@ -275,90 +404,144 @@ def generate_markdown_tables_per_memory():
         print(f"Saved Markdown tables ({mem_str} memory): {out_path}")
 
 def make_ablation_table_multirow_model(all_metrics_per_dataset):
-    """
-    Generate LaTeX table for ablation study:
-    - Model column includes size + margin (e.g., Small / newline (Fixed))
-    - Metrics as separate rows
-    - RAVAEn min memory, STTORM-CD avg memory
-    """
     from itertools import product
+
     sizes = ["Small", "Medium", "Large"]
-    margins = ["Fixed", "Variable"]
-    metrics = list(metrics_config.keys())
+    margins = ["Variable", "Fixed"]
+
+    if "metrics_config" in globals():
+        metrics = list(metrics_config.keys())
+    else:
+        metrics_set = set()
+        for ds in all_metrics_per_dataset.values():
+            for model_dict in ds.values():
+                metrics_set.update(model_dict.keys())
+        metrics = sorted(metrics_set) if metrics_set else ["F1", "Precision", "Recall", "IoU", "RDP"]
+
+    metric_arrow = {m: "↑" for m in metrics}  
+    if "RDP" in metrics:
+        metric_arrow["RDP"] = "↓"
 
     datasets = list(all_metrics_per_dataset.keys())
     if "floods" not in datasets:
-        datasets.append("floods")  # STTORM-CD last column
+        datasets.append("floods")
 
-    mem_idx_ravaen = {"one":0,"min":1,"avg":2}["min"]
-    mem_idx_sttorm = {"one":0,"min":1,"avg":2}["avg"]
-    
-    # Correctly define the number of data columns
-    num_data_cols = len(datasets) 
-    
-    # Define the table with the correct number of columns: 1 for Model, 1 for Metric, and num_data_cols for values.
-    # The provided LaTeX actually has 7 columns (Model, Metric, 5x Data), so your tabular definition was also off.
-    # It should have 1 'l' column (Model), 1 'c' column (Metric), and num_data_cols 'c' columns.
-    # Based on your provided table, the column headers are: Model, Metric, and 5 datasets.
-    # Therefore, your table should have 1 (Model/Metric) + 5 (Datasets) = 6 columns. The error was in the row generation.
-    
+    mem_idx_ravaen = {"one":0,"min":1,"avg":2}
+    mem_idx_sttorm = {"one":0,"min":1,"avg":2}
+
+    def _latex_escape(s):
+        return str(s).replace("_", "\\_")
+
+    dd = dataset_display_names if "dataset_display_names" in globals() else {d: d for d in datasets}
+
+    # --- HARDCODED VALUES ---
+    tiles_count = [626, 27865, 11773, 11253, 6678]
+    changed_pct = [23.64, 57.89, 27.57, 21.70, 22.34]  # Already in %
+
+    col_spec = "|l|c|" + "c|" * len(datasets)
     header = "\\begin{table}[h!]\n  \\centering\n"
-    # This definition for 6 columns is correct.
-    header += "  \\begin{tabular}{|l|c|" + "c|"*(len(datasets)-1) + "}\n" # Corrected: 1 'l' (Model), 1 'c' (Metric), 4 'c' (Data) is wrong.
-    # The first column is the model, the second is the metric. The remaining are datasets.
-    # Your provided table has 7 columns in the body, but 6 in the header. Let's fix this based on the body.
-    # Column 1: Model, Col 2: Metric, Col 3-7: Data. This is 7 columns.
-    
-    # Let's rebuild based on the provided correct LaTeX output
-    header = "\\begin{table}[h!]\n  \\centering\n"
-    header += "  \\begin{tabular}{|l|c|c|c|c|c|c|}\n" # Correct definition for 7 columns
+    header += "  \\begin{tabular}{" + col_spec + "}\n"
     header += "    \\toprule\n"
-    # The header row in the code had one fewer column than the body. Let's fix that.
-    # The first column header is for the Model, the second is empty but corresponds to the Metric column.
-    header += "    Model & " + " & ".join([f"{latex_escape(dataset_display_names[d])}" for d in datasets]) + " \\\\\n"
+
+    # Hardcoded top rows
+    header += "    Tiles N: & & " + " & ".join(str(n) for n in tiles_count) + " \\\\\n"
+    header += "    Changed [\%]: & & " + " & ".join(f"{n*100:.2f}" for n in changed_pct) + " \\\\\n"
+
+    # Model & Metric row with two-line dataset names
+    header += "    Model & Metric & "
+    header += " & ".join([
+        r"\shortstack{RaVAEn\\Landslides}",
+        r"\shortstack{RaVAEn\\Wildfires}",
+        r"\shortstack{RaVAEn\\Hurricanes}",
+        r"\shortstack{RaVAEn\\Floods}",
+        r"\shortstack{STTORM-CD\\Floods}"
+    ])
+    header += " \\\\\n"
     header += "    \\midrule\n"
-    
+
     rows = ""
-    for size, margin in product(sizes, margins):
-        model_name = f"my_{size.lower()}_{margin.lower()}"
+    for size_idx, size in enumerate(sizes):
+        vals_by_metric = {}
+        winners_by_metric = {}
+
+        # Compute values
+        for metric in metrics:
+            vals_by_metric[metric] = {}
+            for margin in margins:
+                model_name = f"my_{size.lower()}_{margin.lower()}"
+                vals = []
+                for dataset in datasets:
+                    metrics_dict = all_metrics_per_dataset.get(dataset, {}).get(model_name, {})
+                    if dataset == "floods" or dataset.lower().endswith("floods"):
+                        val = metrics_dict.get(metric, [0,0,0])[mem_idx_ravaen["avg"]] if metrics_dict else 0.0
+                    elif dataset.lower().startswith("ravaen"):
+                        val = metrics_dict.get(metric, [0,0,0])[mem_idx_ravaen["min"]] if metrics_dict else 0.0
+                    else:
+                        val = metrics_dict.get(metric, [0,0,0])[mem_idx_sttorm["min"]] if metrics_dict else 0.0
+                    vals.append(float(val))
+                vals_by_metric[metric][margin] = vals
+
+            # Determine winners
+            winners = []
+            var_vals = vals_by_metric[metric]["Variable"]
+            fix_vals = vals_by_metric[metric]["Fixed"]
+            metric_key = metric.lower()
+            for v_var, v_fix in zip(var_vals, fix_vals):
+                if metric_key == "rdp":
+                    if v_var < v_fix: winners.append("Variable")
+                    elif v_fix < v_var: winners.append("Fixed")
+                    else: winners.append(None)
+                else:
+                    if v_var > v_fix: winners.append("Variable")
+                    elif v_fix > v_var: winners.append("Fixed")
+                    else: winners.append(None)
+            winners_by_metric[metric] = winners
+
+        # Emit rows grouped by margin
         n_metrics = len(metrics)
-        model_cell = f"\\shortstack{{{size} \\\\ ({margin})}}"
+        for margin_idx, margin in enumerate(margins):
+            other_margin = "Fixed" if margin == "Variable" else "Variable"
+            for i, metric in enumerate(metrics):
+                cells = []
+                if i == 0:
+                    model_cell = "\\multirow{" + str(n_metrics) + "}{*}{\\shortstack{" + _latex_escape(size) + " \\\\ (" + margin + ")}}"
+                    cells.append(model_cell)
+                else:
+                    cells.append("")
 
-        for i, metric in enumerate(metrics):
-            # Create a list to hold all cells for the current row
-            row_cells = []
-            
-            # --- Column 1 & 2: Model and Metric ---
-            if i == 0:
-                # First row of the group gets the multirow model name
-                row_cells.append(f"\\multirow{{{n_metrics}}}{{*}}{{{model_cell}}}")
-                row_cells.append(f"{latex_escape(metric)}")
-            else:
-                # Subsequent rows are blank in the first column
-                row_cells.append("")
-                row_cells.append(f"{latex_escape(metric)}")
+                cells.append(f"{_latex_escape(metric)} {metric_arrow.get(metric, '')}")
 
-            # --- Columns 3+: Data values ---
-            for dataset in datasets:
-                metrics_dict = all_metrics_per_dataset.get(dataset, {}).get(model_name, {})
-                if dataset == "floods":  # STTORM-CD → avg memory
-                    val = metrics_dict.get(metric, [0,0,0])[mem_idx_sttorm]
-                else:  # RAVAEn → min memory
-                    val = metrics_dict.get(metric, [0,0,0])[mem_idx_ravaen]
-                row_cells.append(f"{val:.3f}")
-            
-            # Join all cells with " & " and add the row ending
-            rows += "    " + " & ".join(row_cells) + " \\\\\n"
+                vals = vals_by_metric[metric][margin]
+                other_vals = vals_by_metric[metric][other_margin]
+                winners = winners_by_metric[metric]
 
-        rows += "    \\midrule\n"
-    
-    # Remove the final midrule to match LaTeX best practices before bottomrule
-    if rows.endswith("    \\midrule\n"):
-        rows = rows[:-len("    \\midrule\n")]
+                for j, v in enumerate(vals):
+                    gain_loss = v - other_vals[j]  # fraction difference
+                    gain_loss_str = f" ({gain_loss*100:+.2f})" if abs(gain_loss) > 1e-6 else ""
+                    cell_text = f"{v*100:.2f}{gain_loss_str}"
+                    if winners[j] == margin:
+                        cell_text = "\\textbf{" + cell_text + "}"
+                    cells.append(cell_text)
+
+                rows += "    " + " & ".join(cells) + " \\\\\n"
+
+            if margin == "Variable":
+                rows += "    \\midrule\n"
+
+        if size_idx < len(sizes) - 1:
+            rows += "    \\specialrule{1.5pt}{0pt}{0pt}\n"
 
     footer = "    \\bottomrule\n  \\end{tabular}\n"
-    footer += f"  \\caption{{Ablation study: model & margin effect combined (RAVAEn min memory, STTORM-CD avg memory, all metrics)}}\n\\end{{table}}\n"
-    
+    footer += (
+        "  \\caption{Ablation study for margin types. "
+        "Numbers in parentheses indicate the difference relative to the same model with the opposite margin strategy. "
+        "Bold numbers highlights better result across margins for same model size. "
+        "For flood datasets (STTORM-CD Floods and RaVAEn Floods), the final change predictions were derived using $avg()$ on the memory. "
+        "For the other RaVAEn datasets, we used $min()$ to filter out noise the model was not trained for.}\n"
+    )
+    footer += "  \\label{tab:ablation-study}\n"
+    footer += "\\end{table}\n"
+
     return header + rows + footer
 
 
