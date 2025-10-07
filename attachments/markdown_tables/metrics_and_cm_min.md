@@ -1,4 +1,4 @@
-# Metrics Table (min memory)
+# Metrics & Confusion Matrices (min memory)
 
 ## AURC
 
@@ -100,4 +100,94 @@
 | STTORM-CD (large, fixed) | 78.03 | 86.58 | 59.50 | 64.78 | 68.28 |
 | Index | 54.55 | 84.92 | 66.56 | 47.40 | 59.72 |
 | Cosine baseline | 83.33 | 88.15 | 85.31 | 77.93 | 60.41 |
+
+
+
+---
+
+## Confusion Matrices
+
+### RaVAEn-Landslides
+
+| Model | True Positive | False Positive | False Negative | True Negative |
+|---|---|---|---|---|
+| RaVAEn (small) | 103 | 37 | 29 | 457 |
+| RaVAEn (medium) | 104 | 38 | 28 | 456 |
+| RaVAEn (large) | 118 | 66 | 14 | 428 |
+| STTORM-CD (small, variable) | 108 | 45 | 24 | 449 |
+| STTORM-CD (medium, variable) | 83 | 12 | 49 | 482 |
+| STTORM-CD (large, variable) | 104 | 44 | 28 | 450 |
+| STTORM-CD (small, fixed) | 114 | 73 | 18 | 421 |
+| STTORM-CD (medium, fixed) | 109 | 54 | 23 | 440 |
+| STTORM-CD (large, fixed) | 103 | 35 | 29 | 459 |
+| Index | 72 | 8 | 60 | 486 |
+| Cosine baseline | 110 | 84 | 22 | 410 |
+
+
+### RaVAEn-Wildfires
+
+| Model | True Positive | False Positive | False Negative | True Negative |
+|---|---|---|---|---|
+| RaVAEn (small) | 14788 | 2115 | 1216 | 9746 |
+| RaVAEn (medium) | 14653 | 1924 | 1351 | 9937 |
+| RaVAEn (large) | 14655 | 1881 | 1349 | 9980 |
+| STTORM-CD (small, variable) | 14581 | 2072 | 1423 | 9789 |
+| STTORM-CD (medium, variable) | 14177 | 1923 | 1827 | 9938 |
+| STTORM-CD (large, variable) | 14268 | 1671 | 1736 | 10190 |
+| STTORM-CD (small, fixed) | 14490 | 2071 | 1514 | 9790 |
+| STTORM-CD (medium, fixed) | 13577 | 1747 | 2427 | 10114 |
+| STTORM-CD (large, fixed) | 13857 | 2432 | 2147 | 9429 |
+| Index | 13590 | 1082 | 2414 | 10779 |
+| Cosine baseline | 14107 | 2170 | 1897 | 9691 |
+
+
+### RaVAEn-Hurricanes
+
+| Model | True Positive | False Positive | False Negative | True Negative |
+|---|---|---|---|---|
+| RaVAEn (small) | 2225 | 1238 | 948 | 7362 |
+| RaVAEn (medium) | 2130 | 1227 | 1043 | 7373 |
+| RaVAEn (large) | 1919 | 950 | 1254 | 7650 |
+| STTORM-CD (small, variable) | 2402 | 2871 | 771 | 5729 |
+| STTORM-CD (medium, variable) | 2298 | 1856 | 875 | 6744 |
+| STTORM-CD (large, variable) | 2580 | 2265 | 593 | 6335 |
+| STTORM-CD (small, fixed) | 1599 | 1878 | 1574 | 6722 |
+| STTORM-CD (medium, fixed) | 2324 | 2127 | 849 | 6473 |
+| STTORM-CD (large, fixed) | 1888 | 2227 | 1285 | 6373 |
+| Index | 2112 | 560 | 1061 | 8040 |
+| Cosine baseline | 2707 | 1792 | 466 | 6808 |
+
+
+### RaVAEn-Floods
+
+| Model | True Positive | False Positive | False Negative | True Negative |
+|---|---|---|---|---|
+| RaVAEn (small) | 1294 | 635 | 645 | 8679 |
+| RaVAEn (medium) | 1405 | 957 | 534 | 8357 |
+| RaVAEn (large) | 1380 | 936 | 559 | 8378 |
+| STTORM-CD (small, variable) | 1425 | 595 | 514 | 8719 |
+| STTORM-CD (medium, variable) | 1389 | 529 | 550 | 8785 |
+| STTORM-CD (large, variable) | 1314 | 405 | 625 | 8909 |
+| STTORM-CD (small, fixed) | 1308 | 393 | 631 | 8921 |
+| STTORM-CD (medium, fixed) | 1300 | 320 | 639 | 8994 |
+| STTORM-CD (large, fixed) | 1256 | 243 | 683 | 9071 |
+| Index | 919 | 763 | 1020 | 8551 |
+| Cosine baseline | 1511 | 849 | 428 | 8465 |
+
+
+### STTORM-Floods
+
+| Model | True Positive | False Positive | False Negative | True Negative |
+|---|---|---|---|---|
+| RaVAEn (small) | 798 | 1201 | 359 | 4320 |
+| RaVAEn (medium) | 787 | 1156 | 370 | 4365 |
+| RaVAEn (large) | 757 | 1118 | 400 | 4403 |
+| STTORM-CD (small, variable) | 871 | 488 | 286 | 5033 |
+| STTORM-CD (medium, variable) | 865 | 406 | 292 | 5115 |
+| STTORM-CD (large, variable) | 777 | 396 | 380 | 5125 |
+| STTORM-CD (small, fixed) | 823 | 467 | 334 | 5054 |
+| STTORM-CD (medium, fixed) | 797 | 414 | 360 | 5107 |
+| STTORM-CD (large, fixed) | 790 | 424 | 367 | 5097 |
+| Index | 691 | 505 | 466 | 5016 |
+| Cosine baseline | 699 | 520 | 458 | 5001 |
 

@@ -9,7 +9,7 @@ import psutil
 
 CHANGE_DETECTION_HISTORY = 5
 model_filepath = './change_detection_large_images_1_10_32_32_graph_cc_q8_A53.so'
-input_name = 'images'
+input_name = 'images' #'input' for variable margin models
 csv_file = 'measurements_CD.csv'
 input_shape = (1, 10, 32, 32)
 repeats = 10000

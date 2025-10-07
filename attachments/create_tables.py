@@ -19,10 +19,10 @@ dataset_display_names = {
 }
 # Models (internal names)
 models = [
-    "original_small", "original_medium", "original_large",
-    "my_small_variable", "my_medium_variable", "my_large_variable",
-    "my_small_fixed", "my_medium_fixed", "my_large_fixed",
-    "Index", "Cos baseline"
+    "small_original", "medium_original", "large_original",
+    "small_my_variable", "medium_my_variable", "large_my_variable",
+    "small_my_fixed", "medium_my_fixed", "large_my_fixed",
+    "Index", "Cos_baseline"
 ]
 
 # Display names (same order as models)
@@ -92,15 +92,15 @@ def make_ravaen_table(all_metrics_per_dataset, memory_strategy=MEMORY_STRATEGY):
         + "".join([f"& \\multicolumn{{2}}{{|r|}}{{{all_metrics_per_dataset[d].get('changed_percent',0):.2f}}}" for d in datasets])
         + " \\\\\n"
         "    \\multicolumn{1}{|r|}{Metric} "
-        + "".join([f"& AURC $\\uparrow$ & RDP $\\downarrow$" for _ in datasets])
+        + "".join([f"& {PRIMARY_METRIC}~\%~$\\uparrow$ & {SECONDARY_METRIC}~\%~$\\downarrow$" for _ in datasets])
         + " \\\\\n"
         "    \\midrule\n"
     )
 
     # All models including baselines
-    baseline_models = ["Index", "Cos baseline"]
-    ravaen_models = ["original_small", "original_medium", "original_large"]
-    sttorm_models = ["my_small_variable", "my_medium_variable", "my_large_variable"]
+    baseline_models = ["Index", "Cos_baseline"]
+    ravaen_models = ["small_original", "medium_original", "large_original"]
+    sttorm_models = ["small_my_variable", "medium_my_variable", "large_my_variable"]
     order = baseline_models + ravaen_models + sttorm_models
     display_order = ["Geo-index", "Cosine baseline",
                      "RaVAEn -- small", "RaVAEn -- medium", "RaVAEn -- large",
@@ -112,9 +112,9 @@ def make_ravaen_table(all_metrics_per_dataset, memory_strategy=MEMORY_STRATEGY):
     best_secondary = {d: {} for d in datasets}
     for d in datasets:
         best_primary[d]["ravaen"] = max(all_metrics_per_dataset[d][k].get(PRIMARY_METRIC,[0,0,0])[mem_idx]*100 for k in ravaen_models)
-        best_secondary[d]["ravaen"] = min(all_metrics_per_dataset[d][k].get(SECONDARY_METRIC,[0,0,0])[mem_idx]*100 for k in ravaen_models)
+        best_secondary[d]["ravaen"] = max(all_metrics_per_dataset[d][k].get(SECONDARY_METRIC,[0,0,0])[mem_idx]*100 for k in ravaen_models)
         best_primary[d]["sttorm"] = max(all_metrics_per_dataset[d][k].get(PRIMARY_METRIC,[0,0,0])[mem_idx]*100 for k in sttorm_models)
-        best_secondary[d]["sttorm"] = min(all_metrics_per_dataset[d][k].get(SECONDARY_METRIC,[0,0,0])[mem_idx]*100 for k in sttorm_models)
+        best_secondary[d]["sttorm"] = max(all_metrics_per_dataset[d][k].get(SECONDARY_METRIC,[0,0,0])[mem_idx]*100 for k in sttorm_models)
 
     rows = ""
     for i, model_key in enumerate(order):
@@ -168,8 +168,8 @@ def make_sttorm_table(all_metrics):
         f"  \\begin{{tabular}}{{{col_format}}}\n"
         f"    \\toprule\n"
         f"    \\multicolumn{{1}}{{|c|}}{{Method}} & "
-        f"\\multicolumn{{3}}{{c|}}{{{PRIMARY_METRIC} $\\uparrow$}} & "
-        f"\\multicolumn{{3}}{{c|}}{{{SECONDARY_METRIC} $\\downarrow$}} \\\\\n"
+        f"\\multicolumn{{3}}{{c|}}{{{PRIMARY_METRIC}~[\%]~$\\uparrow$}} & "
+        f"\\multicolumn{{3}}{{c|}}{{{SECONDARY_METRIC}~[\%]~$\\downarrow$}} \\\\\n"
         f"    \\cmidrule(r){{2-4}} \\cmidrule(l){{5-7}}\n"
         f"    & Most recent & $min$(memory) & $avg$(memory) & Most recent & $min$(memory) & $avg$(memory) \\\\\n"
         f"    \\midrule\n"
@@ -177,18 +177,18 @@ def make_sttorm_table(all_metrics):
 
     order = [
         ("Index", "Geo-Index"),   
-        ("Cos baseline", "Cosine baseline"),
-        ("original_small", "RaVAEn -- small"),
-        ("original_medium", "RaVAEn -- medium"),
-        ("original_large", "RaVAEn -- large"),
-        ("my_small_variable", "STTORM-CD -- small"),
-        ("my_medium_variable", "STTORM-CD -- medium"),
-        ("my_large_variable", "STTORM-CD -- large"),
+        ("Cos_baseline", "Cosine baseline"),
+        ("small_original", "RaVAEn -- small"),
+        ("medium_original", "RaVAEn -- medium"),
+        ("large_original", "RaVAEn -- large"),
+        ("small_my_variable", "STTORM-CD -- small"),
+        ("medium_my_variable", "STTORM-CD -- medium"),
+        ("large_my_variable", "STTORM-CD -- large"),
     ]
 
     # Groups for bolding
-    ravaen_keys = ["original_small", "original_medium", "original_large"]
-    sttorm_keys = ["my_small_variable", "my_medium_variable", "my_large_variable"]
+    ravaen_keys = ["small_original", "medium_original", "large_original"]
+    sttorm_keys = ["small_my_variable", "medium_my_variable", "large_my_variable"]
 
     # Determine best/worst depending on metric direction
     best_primary_ravaen = [max(all_metrics[k].get(PRIMARY_METRIC, [0,0,0])[i] for k in ravaen_keys) for i in range(3)]
@@ -221,7 +221,7 @@ def make_sttorm_table(all_metrics):
         rows += f"    {row} \\\\\n"
 
         # Insert midrules between groups
-        if model_key == "Cos baseline" or model_key == "original_large":
+        if model_key == "Cos_baseline" or model_key == "large_original":
             rows += "    \\midrule\n"
 
     footer = (
@@ -301,12 +301,12 @@ def make_combined_table(all_ravaen_metrics, all_sttorm_metrics, metric=PRIMARY_M
         for d in ["landslides", "fires", "hurricanes", "floods_ravaen"]:
             metrics = all_ravaen_metrics.get(d, {}).get(model, {})
             val = metrics.get(metric, [0, 0, 0])[1]  # min memory
-            row += f" & {val*100:.2f}"
+            row += f" & {val*100:.2f}~\%"
 
         # STTORM-CD Floods → avg memory
         metrics = all_sttorm_metrics.get(model, {})
         val = metrics.get(metric, [0, 0, 0])[2]  # avg memory
-        row += f" & {val*100:.2f}"
+        row += f" & {val*100:.2f}~\%"
 
         rows += f"    {row} \\\\\n"
 
@@ -353,12 +353,19 @@ def process_combined_table():
 def generate_markdown_tables_per_memory():
     """
     Generate 3 Markdown files (one, min, avg memory),
-    each containing tables for all metrics.
+    each containing tables for all metrics and confusion matrices.
     """
     import os
     os.makedirs("markdown_tables", exist_ok=True)
 
     mem_idx_map = {"one": 0, "min": 1, "avg": 2}
+    
+    # Map for constructing JSON keys for confusion matrix values
+    json_cm_key_map = {
+        "one": "One memory",
+        "min": "Min memory",
+        "avg": "Avg memory"
+    }
 
     # Load all metrics once
     all_metrics = {}
@@ -370,19 +377,20 @@ def generate_markdown_tables_per_memory():
             metrics = load_metrics(path)
             if metrics is None:
                 continue
-            model_metrics = {metric: extract_metrics(metrics, metric) for metric in metrics_config.keys()}
-            dataset_metrics[model] = model_metrics
+            # Store all raw metrics, including confusion matrix data
+            dataset_metrics[model] = metrics 
         all_metrics[dataset] = dataset_metrics
 
-    # Generate one file per memory strategy
+    # --- Generate one file per memory strategy ---
     for mem_str, mem_idx in mem_idx_map.items():
-        lines = [f"# Metrics Table ({mem_str} memory)\n"]
+        lines = [f"# Metrics & Confusion Matrices ({mem_str} memory)\n"]
 
+        # --- Part 1: Metric Tables (existing logic) ---
         for metric in metrics_config.keys():
             lines.append(f"## {metric}\n")
 
             # Header
-            header = ["Model"] + [dataset_display_names.get(dataset, dataset) for dataset in disasters_ravaen + disasters_sttorm]
+            header = ["Model"] + [dataset_display_names.get(d, d) for d in disasters_ravaen + disasters_sttorm]
             lines.append("| " + " | ".join(header) + " |")
             lines.append("|" + "|".join(["---"] * len(header)) + "|")
 
@@ -390,18 +398,53 @@ def generate_markdown_tables_per_memory():
             for i, model in enumerate(models):
                 row = [display_names[i]]
                 for dataset in disasters_ravaen + disasters_sttorm:
-                    metrics = all_metrics.get(dataset, {}).get(model, {})
-                    vals = metrics.get(metric, [0, 0, 0]) if metrics else [0,0,0]
+                    # Extract metric values using the helper function as before
+                    raw_metrics = all_metrics.get(dataset, {}).get(model, {})
+                    if not raw_metrics:
+                         vals = [0,0,0]
+                    else:
+                         vals = extract_metrics(raw_metrics, metric)
+                    
                     row.append(f"{vals[mem_idx]*100:.2f}")
                 lines.append("| " + " | ".join(row) + " |")
+            
+            lines.append("\n") # space between tables
 
-            lines.append("\n")  # space between tables
+        # --- Part 2: Confusion Matrix Tables (new logic) ---
+        lines.append("\n---\n")
+        lines.append("## Confusion Matrices\n")
+        
+        json_mem_key = json_cm_key_map[mem_str] # e.g., "Min memory"
 
-        # Save Markdown
-        out_path = os.path.join("markdown_tables", f"metrics_{mem_str}.md")
+        for dataset in disasters_ravaen + disasters_sttorm:
+            lines.append(f"### {dataset_display_names.get(dataset, dataset)}\n")
+            
+            # CM Table Header
+            cm_header = ["Model", "True Positive", "False Positive", "False Negative", "True Negative"]
+            lines.append("| " + " | ".join(cm_header) + " |")
+            lines.append("|" + "|".join(["---"] * len(cm_header)) + "|")
+
+            # CM Table Rows
+            for i, model in enumerate(models):
+                metrics = all_metrics.get(dataset, {}).get(model, {})
+                
+                # Construct keys and get values, defaulting to 0 if not found
+                tp = int(metrics.get(f"{json_mem_key} - True Positives_overall", 0))
+                fp = int(metrics.get(f"{json_mem_key} - False Positives_overall", 0))
+                fn = int(metrics.get(f"{json_mem_key} - False Negatives_overall", 0))
+                tn = int(metrics.get(f"{json_mem_key} - True Negatives_overall", 0))
+                
+                row = [display_names[i], str(tp), str(fp), str(fn), str(tn)]
+                lines.append("| " + " | ".join(row) + " |")
+            
+            lines.append("\n") # space between dataset tables
+
+        # --- Save the combined Markdown file ---
+        out_path = os.path.join("markdown_tables", f"metrics_and_cm_{mem_str}.md")
         with open(out_path, "w") as f:
             f.write("\n".join(lines))
-        print(f"Saved Markdown tables ({mem_str} memory): {out_path}")
+        print(f"Saved Markdown tables and CM ({mem_str} memory): {out_path}")
+
 
 def make_ablation_table_multirow_model(all_metrics_per_dataset):
     from itertools import product
@@ -445,7 +488,7 @@ def make_ablation_table_multirow_model(all_metrics_per_dataset):
 
     # Hardcoded top rows
     header += "    Tiles N: & & " + " & ".join(str(n) for n in tiles_count) + " \\\\\n"
-    header += "    Changed [\%]: & & " + " & ".join(f"{n*100:.2f}" for n in changed_pct) + " \\\\\n"
+    header += "    Changed [\%]: & & " + " & ".join(f"{n:.2f}" for n in changed_pct) + " \\\\\n"
 
     # Model & Metric row with two-line dataset names
     header += "    Model & Metric & "
@@ -468,7 +511,7 @@ def make_ablation_table_multirow_model(all_metrics_per_dataset):
         for metric in metrics:
             vals_by_metric[metric] = {}
             for margin in margins:
-                model_name = f"my_{size.lower()}_{margin.lower()}"
+                model_name = f"{size.lower()}_my_{margin.lower()}"
                 vals = []
                 for dataset in datasets:
                     metrics_dict = all_metrics_per_dataset.get(dataset, {}).get(model_name, {})
@@ -509,7 +552,7 @@ def make_ablation_table_multirow_model(all_metrics_per_dataset):
                 else:
                     cells.append("")
 
-                cells.append(f"{_latex_escape(metric)} {metric_arrow.get(metric, '')}")
+                cells.append(f"{_latex_escape(metric)}~[\%]~{metric_arrow.get(metric, '')}")
 
                 vals = vals_by_metric[metric][margin]
                 other_vals = vals_by_metric[metric][other_margin]
@@ -533,11 +576,7 @@ def make_ablation_table_multirow_model(all_metrics_per_dataset):
 
     footer = "    \\bottomrule\n  \\end{tabular}\n"
     footer += (
-        "  \\caption{Ablation study for margin types. "
-        "Numbers in parentheses indicate the difference relative to the same model with the opposite margin strategy. "
-        "Bold numbers highlights better result across margins for same model size. "
-        "For flood datasets (STTORM-CD Floods and RaVAEn Floods), the final change predictions were derived using $avg()$ on the memory. "
-        "For the other RaVAEn datasets, we used $min()$ to filter out noise the model was not trained for.}\n"
+        "  \\caption{Ablation study for margin types. Numbers in parentheses indicate the difference relative to the same model with the opposite margin strategy. Bold numbers highlight better results across margins for the same model size. For flood datasets (STTORM-CD Floods and RaVAEn Floods), the final change predictions were derived using $avg()$ on the memory. For the other RaVAEn datasets, we used $min()$ to filter out noise that the model was not trained for.}\n"
     )
     footer += "  \\label{tab:ablation-study}\n"
     footer += "\\end{table}\n"
@@ -551,7 +590,7 @@ def process_ablation_table_multirow_model():
     for disaster in disasters_ravaen:
         dataset_metrics = {}
         for model in models:
-            if not model.startswith("my_"):
+            if not "_my_" in model:
                 continue
             path = os.path.join(LOG_DIR, disaster, f"{model}_test_metrics.json")
             metrics = load_metrics(path)
@@ -563,7 +602,7 @@ def process_ablation_table_multirow_model():
     # Load STTORM-CD Floods metrics
     sttorm_metrics = {}
     for model in models:
-        if not model.startswith("my_"):
+        if not "_my_" in model:
             continue
         path = os.path.join(LOG_DIR, "floods_sttorm", f"{model}_test_metrics.json")
         metrics = load_metrics(path)
@@ -571,7 +610,6 @@ def process_ablation_table_multirow_model():
             continue
         sttorm_metrics[model] = {m: extract_metrics(metrics, m) for m in metrics_config.keys()}
     all_metrics_per_dataset["floods"] = sttorm_metrics
-
     latex_str = make_ablation_table_multirow_model(all_metrics_per_dataset)
     out_path = os.path.join(OUTPUT_DIR, f"ablation_table_multirow_model.tex")
     with open(out_path, "w") as f:

@@ -16,9 +16,9 @@ from sklearn.metrics import precision_score, recall_score, f1_score, average_pre
 from typing import List, Any, Dict, Tuple
 import os
 # To create heatmaps, do it for each method and dataset individually and adjust the heatmap limits on line 763 , using the provided method- and dataset-specific min and max predicted values.
-CREATE_HEATMAPS = True
-DO_TILE_AURC = False
-#assert sum([CREATE_HEATMAPS, DO_TILE_AURC]) == 1
+CREATE_HEATMAPS = False
+DO_TILE_AURC = True
+assert sum([CREATE_HEATMAPS, DO_TILE_AURC]) == 1
 
 
 
@@ -739,122 +739,6 @@ class DeeperVAE(pl.LightningModule):
             avg_memory_corr_retrieved_list,
             min_memory_corr_retrieved_list,
         ]
-
-    """    def create_heatmaps(self):
-        # [event][tile_id][0][before_picture_id]
-        heatmap_metrics = self.initialized_metrics
-        for delete_list in self.delete_indexes:
-            if len(delete_list) == 2:
-                new_list = [np.nan]
-                heatmap_metrics[delete_list[0]][delete_list[1]][0] = new_list
-            else:
-                if (
-                    len(
-                        heatmap_metrics[delete_list[0]][delete_list[1]][
-                            delete_list[2]
-                        ]
-                    )
-                    > 1
-                ):
-                    del heatmap_metrics[delete_list[0]][delete_list[1]][
-                        delete_list[2]
-                    ][delete_list[3]]
-                else:
-                    heatmap_metrics[delete_list[0]][delete_list[1]][delete_list[2]][
-                        delete_list[3]
-                    ] = np.nan
-
-        for event_id, event in enumerate(heatmap_metrics):
-            mask = self.dataset.change_masks[event_id]
-            avg_event_heatmap = np.zeros((mask.shape[0], mask.shape[1]))
-            min_event_heatmap = np.zeros((mask.shape[0], mask.shape[1]))
-            one_event_heatmap = np.zeros((mask.shape[0], mask.shape[1]))
-            for tile_id, tile in enumerate(event):
-                tile_height_index, tile_width_index = (
-                    tiling.get_tile_height_and_width_indexes(mask, tile_id, 32)
-                )
-
-                cos_distances = tile[0]
-
-                avg_event_heatmap_part = mean(cos_distances)
-                min_event_heatmap_part = min(cos_distances)
-                one_event_heatmap_part = cos_distances[-1]
-
-                avg_event_heatmap_part_mask = (
-                    avg_event_heatmap[
-                        tile_height_index : tile_height_index + 32,
-                        tile_width_index : tile_width_index + 32,
-                    ]
-                    == 0
-                )
-                min_event_heatmap_part_mask = (
-                    min_event_heatmap[
-                        tile_height_index : tile_height_index + 32,
-                        tile_width_index : tile_width_index + 32,
-                    ]
-                    == 0
-                )
-                one_event_heatmap_part_mask = (
-                    one_event_heatmap[
-                        tile_height_index : tile_height_index + 32,
-                        tile_width_index : tile_width_index + 32,
-                    ]
-                    == 0
-                )
-
-                avg_event_heatmap[
-                    tile_height_index : tile_height_index + 32,
-                    tile_width_index : tile_width_index + 32,
-                ][avg_event_heatmap_part_mask] = avg_event_heatmap_part
-                min_event_heatmap[
-                    tile_height_index : tile_height_index + 32,
-                    tile_width_index : tile_width_index + 32,
-                ][min_event_heatmap_part_mask] = min_event_heatmap_part
-                one_event_heatmap[
-                    tile_height_index : tile_height_index + 32,
-                    tile_width_index : tile_width_index + 32,
-                ][one_event_heatmap_part_mask] = one_event_heatmap_part
-
-            self.save_heatmap_with_colorbar(
-                avg_event_heatmap, f"exports/{event_id}_avg.png"
-            )
-            self.save_heatmap_with_colorbar(
-                min_event_heatmap, f"exports/{event_id}_min.png"
-            )
-            self.save_heatmap_with_colorbar(
-                one_event_heatmap, f"exports/{event_id}_one.png"
-            )
-
-    def save_heatmap_with_colorbar(self, data, filename):
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-        nan_color = (1, 1, 1)  # RGB value for white
-        # Create a copy of the 'viridis' colormap and set nan values to white
-        # limits are rounded on 2 decimals
-        # limits for my test dataset (floods), avg, baseline - (0,1.62), ndwi - (-0.37, 0.75), my_small - (0,1.64), ravaen_medium - (0,1.5)
-        # limits for ravaen landslides, min, baseline - (0,1.46), NDVI - (-0.87,0.6), my_large - (0.01, 1.12), ravaen_medium - (0.01,1.05)
-        # limits for ravaen floods, min, baseline - (0,1.87), ndwi - (-0.74,0.79), ravaen_small - (0,1.29), my_small - (0,1.56)
-        # limits for ravaen hurricanes, min, baseline - (0,1.69), ndvi - (-0.33,0.95), ravaen_small - (0,1.17), my_big - (0,1.51)
-        # limits for ravaen fires, min NBR - (-0.73, 1.07), baseline - (0, 1.56), ravaen_medium - (0,1.31), my_big (0,0.94)
-        limits = (0, 1.62)
-        cmap = plt.cm.get_cmap("viridis").copy()
-        cmap.set_bad(color=nan_color)
-        fig, ax = plt.subplots()
-        im = ax.imshow(data, cmap=cmap, vmin=limits[0], vmax=limits[1])
-        # Adjust cmap as needed
-        ax.set_axis_off()
-        cax = fig.add_axes(
-            [
-                ax.get_position().x1 + 0.01,
-                ax.get_position().y0,
-                0.02,
-                ax.get_position().height,
-            ]
-        )
-        plt.colorbar(im, cax=cax)
-        cax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{x:.2f}"))
-        cax.yaxis.set_tick_params(labelsize=18)
-        plt.savefig(filename, bbox_inches="tight")
-        plt.close(fig)"""
     def create_heatmaps(self, tile_size: int = 32):
         dataset_name = getattr(self, "dataset_name", "exports")
         method = getattr(self, "method", "default_method")
@@ -918,7 +802,7 @@ class DeeperVAE(pl.LightningModule):
             print(f"Event {event_id} min/max per metric:", event_min_max)
 
             # Save heatmaps
-            base_path = os.path.join("visualizations", dataset_name, method)
+            base_path = os.path.join("attachments", "visualizations", dataset_name, method)
             os.makedirs(base_path, exist_ok=True)
 
             self.save_heatmap_with_colorbar(

@@ -1,5 +1,7 @@
-import tifffile as tiff
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+import tifffile as tiff
 import numpy as np
 from utils import cloud_detector
 from tqdm import tqdm
