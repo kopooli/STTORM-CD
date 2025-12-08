@@ -66,5 +66,5 @@ if __name__ == "__main__":
         ravaen=True, disaster_type="floods"
     )
     sweep_config["parameters"] = parameters_dict
-    sweep_id = wandb.sweep(sweep_config, project="mac_sweep")
+    sweep_id = wandb.sweep(sweep_config, project="sttorm_sweep")
     wandb.agent(sweep_id, train)

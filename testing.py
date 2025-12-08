@@ -1,31 +1,35 @@
 import os
+import json
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import datas
 import DeeperSiameseVae
-
-# import torch
-# from torchsummary import summary
 from load_validation_data import get_validation_data
 
 DEVICE = "cpu"
+BASE_LOG_DIR = "attachments/test_metrics_logs"
+os.makedirs(BASE_LOG_DIR, exist_ok=True)
 
 
-def load_model(checkpoint_path, size, initialized_metrics, dataset):
+def load_model(checkpoint_path, size, initialized_metrics, dataset, method=None, dataset_name=None, index=None, cos_baseline=False):
     latent_dim = 128
     input_shape = (10, 32, 32)
+    
     if size == "large":
         hidden_channels = [32, 64, 128]
         extra_depth = 2
-    if size == "medium":
+    elif size == "medium":
         hidden_channels = [32, 64, 128]
         extra_depth = 0
-    if size == "small":
+    elif size == "small":
         hidden_channels = [16, 32, 64]
         extra_depth = 0
+    else:
+        raise ValueError(f"Unknown model size: {size}")
+
     model = DeeperSiameseVae.DeeperVAE.load_from_checkpoint(
         checkpoint_path,
-        map_location="cpu",
+        map_location=DEVICE,
         hidden_channels=hidden_channels,
         extra_depth_on_scale=extra_depth,
         latent_dim=latent_dim,
@@ -37,86 +41,129 @@ def load_model(checkpoint_path, size, initialized_metrics, dataset):
         variable_margin=True,
         log_all_metrics=False,
         dataset_valid=dataset,
+        index=index,
+        cos_baseline=cos_baseline,
+        log_extra=True,
+        method=method,
+        dataset_name=dataset_name,
     )
     model.to(DEVICE)
     return model
 
 
+def run_tests(models, dataloader, log_dir):
+    os.makedirs(log_dir, exist_ok=True)
+    trainer = pl.Trainer(accelerator=DEVICE, max_epochs=1)
+
+    for model_name, model in models.items():
+        print(f"Testing {model_name} on {log_dir} ...")
+        results = trainer.test(model=model, dataloaders=dataloader)
+
+        # Save metrics to JSON
+        json_path = os.path.join(log_dir, f"{model_name}_test_metrics.json")
+        with open(json_path, "w") as f:
+            json.dump(results, f, indent=4)
+        print(f"Saved test metrics to {json_path}")
+
+
 if __name__ == "__main__":
     my_checkpoint_path = "models/sttorm_cd_lightning_ckpt/"
     original_path = "models/ravaen_modified_ckpt/"
-    # here select the disaster type and dataset
-    # disaster types: fires floods hurricanes landslides
-    # raven=False uses my floods test dataset
-    before_images, after_images, change_masks = get_validation_data(
-        ravaen=False, disaster_type="floods"
-    )
 
-    test_dataset = datas.ValidTestDataset(before_images, after_images, change_masks)
-    initialized_metrics = test_dataset.get_initialized_metrics()
-    my_small_model = load_model(
-        os.path.join(my_checkpoint_path, "small.ckpt"),
-        "small",
-        initialized_metrics,
-        test_dataset,
-    )
-    my_medium_model = load_model(
-        os.path.join(my_checkpoint_path, "medium.ckpt"),
-        "medium",
-        initialized_metrics,
-        test_dataset,
-    )
-    my_large_model = load_model(
-        os.path.join(my_checkpoint_path, "large.ckpt"),
-        "large",
-        initialized_metrics,
-        test_dataset,
-    )
-    original_small_model = load_model(
-        os.path.join(original_path, "small_modified_checkpoint.ckpt"),
-        "small",
-        initialized_metrics,
-        test_dataset,
-    )
-    original_medium_model = load_model(
-        os.path.join(original_path, "medium_modified_checkpoint.ckpt"),
-        "medium",
-        initialized_metrics,
-        test_dataset,
-    )
-    original_large_model = load_model(
-        os.path.join(original_path, "large_modified_checkpoint.ckpt"),
-        "large",
-        initialized_metrics,
-        test_dataset,
-    )
-    """input_data = torch.zeros((16,10,32,32))
-    summary(original_small_model, input_data)
-    summary(original_medium_model, input_data)
-    summary(original_large_model, input_data)"""
-    n_cpu = os.cpu_count()
-    # Create a dataloader
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=int(n_cpu / 2),
-        persistent_workers=True,
-    )
-    # Create a PyTorch Lightning Trainer
-    trainer = pl.Trainer(
-        accelerator=DEVICE,
-        max_epochs=1,
-    )
-    print("original_small")
-    trainer.test(model=original_small_model, dataloaders=test_dataloader)
-    print("original_medium")
-    trainer.test(model=original_medium_model, dataloaders=test_dataloader)
-    print("original_large")
-    trainer.test(model=original_large_model, dataloaders=test_dataloader)
-    print("my_small")
-    trainer.test(model=my_small_model, dataloaders=test_dataloader)
-    print("my_medium")
-    trainer.test(model=my_medium_model, dataloaders=test_dataloader)
-    print("my_large")
-    trainer.test(model=my_large_model, dataloaders=test_dataloader)
+    disasters = [
+        # folder_name, ravaen_flag, disaster_type, baseline_index
+        ("landslides", True, "landslides", "ndvi"),
+        ("hurricanes", True, "hurricanes", "ndvi"),
+        ("floods_ravaen", True, "floods", "ndwi"),
+        ("floods_sttorm", False, "floods", "ndwi"),
+        ("fires", True, "fires", "NBR"),
+    ]
+
+    for folder_name, ravaen_flag, disaster_type, index in disasters:
+        print(f"\n=== Running tests for {folder_name} (ravaen={ravaen_flag}) ===")
+
+        # Prepare dataset
+        before_images, after_images, change_masks = get_validation_data(
+            ravaen=ravaen_flag, disaster_type=disaster_type
+        )
+        test_dataset = datas.ValidTestDataset(before_images, after_images, change_masks)
+        initialized_metrics = test_dataset.get_initialized_metrics()
+
+        # Dataloader
+        n_cpu = os.cpu_count()
+        test_dataloader = DataLoader(
+            test_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=int(n_cpu / 2),
+            persistent_workers=True,
+        )
+
+        # Load models with explicit names and folder_name as dataset_name
+        models = {
+            "small_original": load_model(
+                os.path.join(original_path, "small_modified_checkpoint.ckpt"),
+                "small", initialized_metrics, test_dataset,
+                method="small_original", dataset_name=folder_name
+            ),
+            "medium_original": load_model(
+                os.path.join(original_path, "medium_modified_checkpoint.ckpt"),
+                "medium", initialized_metrics, test_dataset,
+                method="medium_original", dataset_name=folder_name
+            ),
+            "large_original": load_model(
+                os.path.join(original_path, "large_modified_checkpoint.ckpt"),
+                "large", initialized_metrics, test_dataset,
+                method="large_original", dataset_name=folder_name
+            ),
+
+            "small_my_variable": load_model(
+                os.path.join(my_checkpoint_path, "small_variable.ckpt"),
+                "small", initialized_metrics, test_dataset,
+                method="small_my_variable", dataset_name=folder_name
+            ),
+            "medium_my_variable": load_model(
+                os.path.join(my_checkpoint_path, "medium_variable.ckpt"),
+                "medium", initialized_metrics, test_dataset,
+                method="medium_my_variable", dataset_name=folder_name
+            ),
+            "large_my_variable": load_model(
+                os.path.join(my_checkpoint_path, "large_variable.ckpt"),
+                "large", initialized_metrics, test_dataset,
+                method="large_my_variable", dataset_name=folder_name
+            ),
+
+            "small_my_fixed": load_model(
+                os.path.join(my_checkpoint_path, "small_fixed.ckpt"),
+                "small", initialized_metrics, test_dataset,
+                method="small_my_fixed", dataset_name=folder_name
+            ),
+            "medium_my_fixed": load_model(
+                os.path.join(my_checkpoint_path, "medium_fixed.ckpt"),
+                "medium", initialized_metrics, test_dataset,
+                method="medium_my_fixed", dataset_name=folder_name
+            ),
+            "large_my_fixed": load_model(
+                os.path.join(my_checkpoint_path, "large_fixed.ckpt"),
+                "large", initialized_metrics, test_dataset,
+                method="large_my_fixed", dataset_name=folder_name
+            ),
+
+            # Baseline models
+            "Index": load_model(
+                os.path.join(my_checkpoint_path, "small_fixed.ckpt"),
+                "small", initialized_metrics, test_dataset,
+                method="Index", dataset_name=folder_name, index=index, cos_baseline=False
+            ),
+            "Cos_baseline": load_model(
+                os.path.join(my_checkpoint_path, "small_fixed.ckpt"),
+                "small", initialized_metrics, test_dataset,
+                method="Cos_baseline", dataset_name=folder_name, index=None, cos_baseline=True
+            ),
+        }
+
+        # Run tests
+        log_dir = os.path.join(BASE_LOG_DIR, folder_name)
+        run_tests(models, test_dataloader, log_dir)
+
+    print("\nAll disasters tested and metrics saved to", BASE_LOG_DIR)

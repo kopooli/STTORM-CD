@@ -8,7 +8,7 @@ import csv
 import psutil
 
 model_filepath = './change_detection_small_images_1_10_32_32_graph_cc_q8_A53.so'
-input_name = 'images'
+input_name = 'images' #'input' for variable margin models
 csv_file = 'measurements.csv'
 input_shape = (1, 10, 32, 32)
 theoretical_input_bitsize=16

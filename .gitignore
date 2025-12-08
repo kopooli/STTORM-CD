@@ -8,3 +8,11 @@ logs/
 lightning_logs/
 !data/tiled/.gitkeep
 !data/ravaen/.gitkeep
+test_metrics_logs/
+wandb_export/
+comparison.pdf
+comparison.png
+latex_tables/
+exports/
+visualizations/
+thrashcan/
